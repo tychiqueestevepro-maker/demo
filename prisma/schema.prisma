@@ -1,0 +1,381 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignType {
+  PROSPECTING
+  RECRUITING
+  HR_REQUEST
+  CLIENT_DOCUMENTS
+  INVOICE_FOLLOW_UP
+  VENDOR_FOLLOW_UP
+  CUSTOM
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  WAITING
+  BLOCKED
+  COMPLETED
+  ARCHIVED
+}
+
+enum TargetStatus {
+  NOT_CONTACTED
+  INITIAL_SENT
+  WAITING
+  FOLLOW_UP_DUE
+  FOLLOW_UP_SENT
+  REPLIED
+  INTERESTED
+  NOT_NOW
+  NOT_INTERESTED
+  OVERDUE
+  ESCALATION_DUE
+  ESCALATED
+  COMPLETED
+  STOPPED
+  ARCHIVED
+}
+
+enum TargetPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum StageType {
+  INITIAL
+  FOLLOW_UP
+  FINAL
+  ESCALATION
+  RESPONSE_INTERESTED
+  RESPONSE_NOT_NOW
+  RESPONSE_OBJECTION
+  CUSTOM
+}
+
+enum FollowUpStatus {
+  PENDING
+  DUE
+  COPIED
+  SENT
+  REPLIED
+  SNOOZED
+  COMPLETED
+  CANCELLED
+}
+
+enum DataSourceType {
+  LINKEDIN_PROFILE
+  EMAIL_THREAD
+  CRM_RECORD
+  GOOGLE_DRIVE
+  NOTION_PAGE
+  SLACK_THREAD
+  SPREADSHEET
+  DOCUMENT
+  INVOICE
+  CONTRACT
+  JOB_DESCRIPTION
+  CLIENT_BRIEF
+  CUSTOM_LINK
+  NOTE
+}
+
+enum UpdateType {
+  NOTE
+  EMAIL
+  MESSAGE
+  CALL_SUMMARY
+  DECISION
+  BLOCKER
+  DOCUMENT
+  LINK
+  STATUS_CHANGE
+  SYSTEM
+}
+
+enum ActivityType {
+  CAMPAIGN_CREATED
+  CAMPAIGN_UPDATED
+  CAMPAIGN_LAUNCHED
+  TARGET_ADDED
+  TARGET_UPDATED
+  PLAYBOOK_GENERATED
+  MESSAGE_COPIED
+  MESSAGE_MARKED_SENT
+  TARGET_REPLIED
+  TARGET_COMPLETED
+  FOLLOW_UP_SNOOZED
+  DATA_SOURCE_ADDED
+  UPDATE_ADDED
+  AI_SUMMARY_UPDATED
+}
+
+model User {
+  id             String             @id @default(cuid())
+  email          String             @unique
+  name           String?
+  avatarUrl      String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  campaigns      Campaign[]
+  targets        CampaignTarget[]
+  playbooks      CampaignPlaybook[]
+  playbookStages PlaybookStage[]
+  followUps      FollowUp[]
+  dataSources    DataSource[]
+  updates        Update[]
+  activityLogs   ActivityLog[]
+  templates      Template[]
+  subscription   Subscription?
+}
+
+model Campaign {
+  id             String             @id @default(cuid())
+  userId         String
+  name           String
+  type           CampaignType
+  goal           String
+  description    String?
+  targetAudience String?
+  channel        String?
+  tone           String?
+  urgency        String?
+  status         CampaignStatus     @default(DRAFT)
+  priority       TargetPriority     @default(MEDIUM)
+  deadline       DateTime?
+  aiSummary      String?
+  aiHealth       String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  launchedAt     DateTime?
+  archivedAt     DateTime?
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targets        CampaignTarget[]
+  playbooks      CampaignPlaybook[]
+  stages         PlaybookStage[]
+  followUps      FollowUp[]
+  dataSources    DataSource[]
+  updates        Update[]
+  activityLogs   ActivityLog[]
+
+  @@index([userId, status])
+  @@index([userId, type])
+}
+
+model CampaignTarget {
+  id                  String         @id @default(cuid())
+  campaignId          String
+  userId              String
+  name                String
+  company             String?
+  role                String?
+  email               String?
+  phone               String?
+  profileUrl          String?
+  customChannelUrl    String?
+  notes               String?
+  status              TargetStatus   @default(NOT_CONTACTED)
+  priority            TargetPriority @default(MEDIUM)
+  currentStageId      String?
+  lastActionAt        DateTime?
+  nextActionAt        DateTime?
+  followUpCount       Int            @default(0)
+  aiSummary           String?
+  aiRecommendedAction String?
+  aiRisk              String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  campaign            Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStage        PlaybookStage? @relation("CurrentTargetStage", fields: [currentStageId], references: [id], onDelete: SetNull)
+  followUps           FollowUp[]
+  dataSources         DataSource[]
+  updates             Update[]
+  activityLogs        ActivityLog[]
+
+  @@index([userId, status])
+  @@index([campaignId, status])
+}
+
+model CampaignPlaybook {
+  id                  String          @id @default(cuid())
+  campaignId          String
+  userId              String
+  name                String
+  description         String?
+  campaignSummary     String?
+  campaignLogic       Json?
+  recommendedStatuses Json?
+  rules               Json?
+  risks               Json?
+  setupSuggestions    Json?
+  rawAiOutput         Json?
+  escalationLogic     String?
+  stopCondition       String?
+  successCondition    String?
+  generatedByAi       Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  campaign            Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stages              PlaybookStage[]
+
+  @@index([userId, campaignId])
+}
+
+model PlaybookStage {
+  id                 String           @id @default(cuid())
+  playbookId         String
+  campaignId         String
+  userId             String
+  order              Int
+  name               String
+  type               StageType
+  goalOfStage        String?
+  delayDays          Int              @default(0)
+  condition          String?
+  messageSubject     String?
+  messageBody        String
+  recommendedChannel String?
+  whyThisMessage     String?
+  nextStatus         String?
+  aiMetadata         Json?
+  tone               String?
+  isFinal            Boolean          @default(false)
+  requiresEscalation Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  playbook           CampaignPlaybook @relation(fields: [playbookId], references: [id], onDelete: Cascade)
+  campaign           Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentTargets     CampaignTarget[] @relation("CurrentTargetStage")
+  followUps          FollowUp[]
+
+  @@unique([playbookId, order])
+  @@index([userId, campaignId])
+}
+
+model FollowUp {
+  id             String         @id @default(cuid())
+  campaignId     String
+  targetId       String
+  userId         String
+  stageId        String?
+  status         FollowUpStatus @default(PENDING)
+  dueAt          DateTime
+  sentAt         DateTime?
+  copiedAt       DateTime?
+  completedAt    DateTime?
+  messageSubject String?
+  messageBody    String
+  reason         String?
+  priority       TargetPriority @default(MEDIUM)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  campaign       Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  target         CampaignTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stage          PlaybookStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, dueAt])
+  @@index([campaignId, targetId])
+}
+
+model DataSource {
+  id            String          @id @default(cuid())
+  userId        String
+  campaignId    String?
+  targetId      String?
+  title         String
+  type          DataSourceType
+  url           String?
+  description   String?
+  importance    TargetPriority  @default(MEDIUM)
+  owner         String?
+  lastCheckedAt DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign      Campaign?       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  target        CampaignTarget? @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([campaignId])
+  @@index([targetId])
+}
+
+model Update {
+  id                 String          @id @default(cuid())
+  userId             String
+  campaignId         String
+  targetId           String?
+  type               UpdateType
+  content            String
+  source             String?
+  aiExtractedSummary String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign           Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  target             CampaignTarget? @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([userId, campaignId])
+  @@index([targetId])
+}
+
+model ActivityLog {
+  id         String          @id @default(cuid())
+  userId     String
+  campaignId String
+  targetId   String?
+  type       ActivityType
+  message    String
+  metadata   Json?
+  createdAt  DateTime        @default(now())
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaign   Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  target     CampaignTarget? @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@index([userId, campaignId])
+  @@index([targetId])
+}
+
+model Template {
+  id           String       @id @default(cuid())
+  userId       String
+  campaignType CampaignType
+  stageType    StageType
+  name         String
+  subject      String?
+  body         String
+  tone         String?
+  isDefault    Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, campaignType])
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  plan                 String    @default("free")
+  status               String    @default("trialing")
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
