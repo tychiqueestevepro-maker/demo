@@ -63,10 +63,9 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
         <StatCard label="Replied" value={String(campaign.replies)} detail="Replies to handle" tone="text-emerald-700" />
         <StatCard label="Follow-ups due" value={String(campaign.followUpsDue)} detail="Manual actions" tone="text-violet-700" />
         <StatCard label="Completed" value={String(campaign.completed)} detail="Closed targets" tone="text-blue-700" />
-        <StatCard label="Blocked" value={String(campaign.blocked)} detail="Need source or owner" tone="text-rose-700" />
+        <StatCard label="Blocked" value={String(campaign.blocked)} detail="Need document or owner" tone="text-rose-700" />
       </div>
       <CampaignTabs campaignId={campaign.id} />
     </>
   );
 }
-

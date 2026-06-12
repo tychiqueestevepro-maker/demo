@@ -140,7 +140,7 @@ export const campaignTypeOptions: CampaignTypeOption[] = [
   { title: "Prospecting", description: "Outbound sales sequences with manual follow-ups.", icon: Megaphone },
   { title: "Recruiting", description: "Candidate outreach, reminders, and hiring coordination.", icon: BriefcaseBusiness },
   { title: "HR request", description: "Internal people requests with escalation rules.", icon: Users },
-  { title: "Client documents", description: "Collect contracts, forms, and missing evidence.", icon: FileCheck2 },
+  { title: "Client documents", description: "Collect contracts, forms, and missing campaign documents.", icon: FileCheck2 },
   { title: "Invoice follow-up", description: "Payment reminders and finance handoffs.", icon: CircleDollarSign },
   { title: "Vendor follow-up", description: "Coordinate suppliers without losing context.", icon: Handshake },
   { title: "Custom", description: "Build a campaign around any repeatable goal.", icon: Inbox },
@@ -166,8 +166,8 @@ export const campaigns: Campaign[] = [
     summary: {
       situation: "The campaign is warm: several CFOs engaged with the ROI angle, but replies cluster around procurement timing.",
       progress: "27 of 42 targets have received at least one touch. Follow-up 2 is the highest leverage step today.",
-      blockers: "Three targets lack a verified source link and two accounts need a softer compliance-safe message.",
-      nextPriorities: ["Send 9 due follow-ups", "Review 3 blocked source gaps", "Personalize the CFO break-up template"],
+      blockers: "Three targets lack a saved profile or note and two accounts need a softer compliance-safe message.",
+      nextPriorities: ["Send 9 due follow-ups", "Review 3 blocked document/info gaps", "Personalize the CFO break-up template"],
       health: "Healthy, but momentum depends on clearing today's follow-up queue.",
     },
   },
@@ -215,7 +215,7 @@ export const campaigns: Campaign[] = [
       situation: "Most required documents are in place. The open work is concentrated around billing and security contacts.",
       progress: "Seven targets are complete, two are waiting, and two need escalation.",
       blockers: "Security questionnaire ownership is unclear and finance has not confirmed the invoice address.",
-      nextPriorities: ["Escalate security contact", "Send finance reminder", "Attach Drive folder link to missing source"],
+      nextPriorities: ["Escalate security contact", "Send finance reminder", "Attach Drive folder link to the missing document"],
       health: "At risk only if the two escalations stay unresolved.",
     },
   },
@@ -236,7 +236,7 @@ export const campaigns: Campaign[] = [
     deadline: "Jun 30",
     channel: "Email + Slack",
     summary: {
-      situation: "Vendor owners are spread across teams and several source links are missing.",
+      situation: "Vendor owners are spread across teams and several contract or PO links are missing.",
       progress: "Four vendors are resolved. Five need internal owner confirmation before follow-up.",
       blockers: "Missing purchase orders and unclear approvers are slowing the queue.",
       nextPriorities: ["Assign internal owners", "Collect missing PO links", "Snooze vendors awaiting legal"],
@@ -263,11 +263,11 @@ export const targets: Target[] = [
     sourceCount: 4,
     summary: {
       who: "Finance leader at a fast-growing infrastructure SaaS company.",
-      why: "Matches the campaign's ICP and recently hired a RevOps manager.",
-      happened: "Received initial message and viewed the source deck.",
+      why: "Matches the campaign's target criteria and recently hired a RevOps manager.",
+      happened: "Received initial message and viewed the finance overview.",
       blocker: "No reply yet; finance value prop needs to be sharpened.",
       next: "Send a short follow-up anchored on month-end reporting pressure.",
-      sources: ["LinkedIn profile", "Company funding note", "Source deck", "CRM record"],
+      sources: ["LinkedIn profile", "Company funding note", "Finance overview", "CRM record"],
     },
   },
   {
@@ -301,19 +301,19 @@ export const targets: Target[] = [
     company: "Orbit Desk",
     role: "Head of Revenue",
     email: "lina@orbitdesk.example",
-    note: "No LinkedIn source found yet.",
+    note: "No LinkedIn profile note saved yet.",
     status: "Blocked",
-    currentStep: "Source review",
+    currentStep: "Info review",
     priority: "Medium",
-    lastAction: "Source check failed",
-    nextAction: "Add source link before next touch",
+    lastAction: "Info check failed",
+    nextAction: "Add profile link before next touch",
     due: "Tomorrow",
     sourceCount: 1,
     summary: {
       who: "Revenue leader at a customer support platform.",
       why: "Likely owns handoff quality between sales and finance.",
       happened: "Imported from CSV but enrichment is incomplete.",
-      blocker: "Needs a credible source link to personalize safely.",
+      blocker: "Needs a credible profile link or prospect note to personalize safely.",
       next: "Add a public profile or company page before copying the message.",
       sources: ["CSV import"],
     },
@@ -375,7 +375,7 @@ export const playbookStages: PlaybookStage[] = [
     title: "Initial outreach",
     delay: "Day 0",
     status: "Ready",
-    condition: "Send once target has at least two sources.",
+    condition: "Send once target has at least two saved notes or links.",
     message: "Hi {{firstName}}, noticed {{company}} is scaling finance ops. Worth comparing notes on reducing follow-up drift before month end?",
   },
   {
@@ -393,7 +393,7 @@ export const playbookStages: PlaybookStage[] = [
     title: "Follow-up 2",
     delay: "4 business days",
     status: "Conditional",
-    condition: "Switch to softer value proof if source confidence is medium.",
+    condition: "Switch to softer value proof if saved info is limited.",
     message: "Sharing one concrete angle: a campaign cockpit can make every next action visible without asking reps to live in another tool.",
   },
   {
@@ -479,20 +479,20 @@ export const followUps: FollowUp[] = [
 export const dataSources: DataSource[] = [
   {
     id: "d1",
-    title: "Ferro Labs finance profile",
+    title: "ferro_labs_finance_profile.csv",
     type: "LinkedIn profile",
     url: "https://example.com/ferro-finance",
     campaignId: "northstar-q3",
     targetId: "t-amelia",
     linkedCampaign: "Northstar Q3 pipeline",
     linkedTarget: "Amelia Brooks",
-    description: "Public profile used for title and team-size personalization.",
+    description: "Public profile saved as prospect information for title and team-size personalization.",
     importance: "High",
     lastChecked: "Today",
   },
   {
     id: "d2",
-    title: "Ledgerly implementation reply",
+    title: "ledgerly_implementation_reply.pdf",
     type: "Email thread",
     url: "https://example.com/email-ledgerly",
     campaignId: "northstar-q3",
@@ -505,7 +505,7 @@ export const dataSources: DataSource[] = [
   },
   {
     id: "d3",
-    title: "Candidate role brief",
+    title: "candidate_role_brief.xlsx",
     type: "Document",
     url: "https://example.com/role-brief",
     campaignId: "design-leads",
@@ -518,7 +518,7 @@ export const dataSources: DataSource[] = [
   },
   {
     id: "d4",
-    title: "ACME onboarding folder",
+    title: "acme_onboarding_folder.png",
     type: "Drive folder",
     url: "https://example.com/acme-folder",
     campaignId: "acme-docs",
@@ -529,14 +529,14 @@ export const dataSources: DataSource[] = [
   },
   {
     id: "d5",
-    title: "Orbit Desk source link",
-    type: "Missing source",
+    title: "orbit_desk_profile_link",
+    type: "Missing prospect info",
     url: "#",
     campaignId: "northstar-q3",
     targetId: "t-lina",
     linkedCampaign: "Northstar Q3 pipeline",
     linkedTarget: "Lina Ortega",
-    description: "Needed before the next message can be safely personalized.",
+    description: "Profile link or prospect note needed before the next message can be safely personalized.",
     importance: "Medium",
     lastChecked: "Not checked",
     missing: true,
@@ -609,7 +609,7 @@ export const timelineEvents: TimelineEvent[] = [
     id: "a3",
     campaignId: "design-leads",
     targetId: "t-priya",
-    title: "Candidate source added",
+    title: "Candidate info added",
     description: "Portfolio link attached to Priya Shah.",
     time: "Yesterday 16:30",
   },
@@ -627,13 +627,13 @@ export const dashboardStats = [
   { label: "Active campaigns", value: "4", detail: "2 need action today", tone: "text-emerald-700" },
   { label: "Follow-ups due today", value: "19", detail: "9 high priority", tone: "text-violet-700" },
   { label: "Replies to handle", value: "8", detail: "3 are ready to schedule", tone: "text-blue-700" },
-  { label: "Blocked targets", value: "11", detail: "Mostly missing sources", tone: "text-amber-700" },
+  { label: "Blocked targets", value: "11", detail: "Mostly missing documents/info", tone: "text-amber-700" },
   { label: "Need review", value: "3", detail: "Playbooks awaiting edit", tone: "text-rose-700" },
 ];
 
 export const recentUpdates = [
   "Ledgerly replied with implementation questions.",
-  "ACME security source was marked missing.",
+  "ACME security document was marked missing.",
   "Senior design lead playbook needs compensation context.",
   "Vendor renewal checks has five owner gaps.",
 ];
@@ -653,7 +653,7 @@ export const settingsSections = [
   },
   {
     title: "AI preferences",
-    items: ["Tone: concise and helpful", "Personalization: source-backed", "Never imply automatic sending"],
+    items: ["Tone: concise and helpful", "Personalization: saved documents and notes", "Never imply automatic sending"],
   },
   {
     title: "Notifications",
@@ -686,8 +686,7 @@ export function getSourcesForTarget(targetId: string) {
 }
 
 export const emptyStateExamples = [
-  { icon: Building2, title: "Paste a target list", description: "Name, company, role, email, note, and source link." },
-  { icon: FileCheck2, title: "Attach source links", description: "Keep campaign and target context next to each person." },
+  { icon: Building2, title: "Paste a target list", description: "Name, company, role, email, note, and useful link." },
+  { icon: FileCheck2, title: "Attach documents and notes", description: "Keep campaign documents and prospect information next to each person." },
   { icon: Inbox, title: "Copy next messages", description: "The MVP keeps the user in control of every send." },
 ];
-

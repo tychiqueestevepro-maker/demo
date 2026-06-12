@@ -1,17 +1,20 @@
 import { notFound } from "next/navigation";
+import { Sparkles } from "lucide-react";
 
 import {
   AISummaryCard,
+  ConversationContext,
   MessagePreviewModal,
   PageHeader,
   PriorityBadge,
+  TargetSequence,
   TargetDataDirectory,
   TargetStatusBadge,
-  Timeline,
 } from "@/components/product-components";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCampaign, getTarget, targets, timelineEvents } from "@/lib/mock-data";
+import { getCampaign, getPlaybook, getTarget, targets, timelineEvents } from "@/lib/mock-data";
 
 type TargetPageProps = {
   params: Promise<{ id: string; targetId: string }>;
@@ -25,6 +28,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
   const { id, targetId } = await params;
   const campaign = getCampaign(id);
   const target = getTarget(targetId);
+  const stages = getPlaybook(id);
 
   if (!campaign || !target) {
     notFound();
@@ -50,14 +54,12 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
           </CardContent>
         </Card>
         <AISummaryCard title="AI target summary">
-          <div className="grid gap-3 md:grid-cols-2">
-            <p><strong>Who they are:</strong> {target.summary.who}</p>
-            <p><strong>Why included:</strong> {target.summary.why}</p>
-            <p><strong>What happened:</strong> {target.summary.happened}</p>
-            <p><strong>Current blocker:</strong> {target.summary.blocker}</p>
-            <p><strong>Next action:</strong> {target.summary.next}</p>
-            <div><strong>Relevant sources:</strong><div className="mt-2 flex flex-wrap gap-2">{target.summary.sources.map((source) => <Badge key={source}>{source}</Badge>)}</div></div>
-          </div>
+          <p className="text-sm leading-relaxed text-neutral-700">
+            Based on the conversation history and campaign timeline, we are currently at the <strong>{target.currentStep}</strong> stage. 
+            {target.name} from {target.company} is in this campaign because {target.summary.why.toLowerCase()}. 
+            Currently, {target.summary.happened.toLowerCase()}, but {target.summary.blocker.toLowerCase()}. 
+            The recommended next action is to <strong>{target.summary.next.toLowerCase()}</strong>. Please review the recommended message below and manually validate the follow-up, reject it, or confirm the prospect if the goal has been reached.
+          </p>
         </AISummaryCard>
       </div>
       <div className="mt-6 grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
@@ -67,18 +69,29 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
             <p className="text-sm leading-6 text-neutral-600">{target.nextAction}</p>
             <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-6">{nextMessage}</div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <MessagePreviewModal label="Copy next message" message={nextMessage} />
-              <Badge tone="emerald">Manual send only</Badge>
+              <Button size="sm" className="bg-violet-600 text-white hover:bg-violet-700">Validate follow-up</Button>
+              <Button size="sm" variant="secondary" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">Confirm prospect</Button>
+              <Button size="sm" variant="secondary" className="border-rose-200 text-rose-700 hover:bg-rose-50">Reject</Button>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader><CardTitle>History</CardTitle></CardHeader>
-          <CardContent><Timeline events={timelineEvents.filter((event) => event.targetId === target.id)} /></CardContent>
-        </Card>
+        <ConversationContext target={target} events={timelineEvents.filter((event) => event.targetId === target.id)} />
       </div>
       <div className="mt-6">
-        <PageHeader title="Target data directory" description="LinkedIn, email thread, CRM record, Drive folder, documents, invoices, contracts, notes, and custom links." />
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight text-[#120b2f]">Follow-up Sequence</h2>
+            <p className="text-sm text-neutral-500 mt-1">Current steps and actions planned for this prospect.</p>
+          </div>
+          <Button variant="secondary" className="gap-2 bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200">
+            <Sparkles className="h-4 w-4" />
+            Update sequence with AI
+          </Button>
+        </div>
+        <TargetSequence stages={stages} currentStep={target.currentStep} />
+      </div>
+      <div className="mt-6">
+        <PageHeader title="Prospect notes and documents" description="Notes, profile links, conversation details, campaign documents, invoices, contracts, and custom links attached to this prospect." />
         <TargetDataDirectory targetId={target.id} />
       </div>
     </>

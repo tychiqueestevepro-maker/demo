@@ -500,6 +500,12 @@ AI classification can suggest source type, scope, importance, label, and reason.
 
 ## 13. Security and Privacy
 
+### Séparation des utilisateurs (User Isolation)
+Tous les utilisateurs sont strictement isolés dans la base de données. 
+- Chaque modèle Prisma (Campagnes, Cibles, Sources de données, Playbooks, etc.) possède une colonne `userId`.
+- Chaque route d'API passe par une fonction `requireUser()` qui récupère l'identité de l'utilisateur de manière sécurisée via le token JWT de Supabase Auth.
+- Toutes les requêtes vers la base de données (lectures/écritures) sont systématiquement filtrées avec `where: { userId }`, garantissant qu'un utilisateur n'accède qu'à ses propres données.
+
 Rules:
 
 - Every persisted record is scoped by `userId`.
@@ -514,6 +520,18 @@ Rules:
 - Deletion/export should be supported later.
 
 Auth note: API auth uses Supabase Auth access tokens. Clients should send `Authorization: Bearer <supabase-access-token>`. In local development only, `DEV_USER_ID` or the first seeded user can be used as a fallback when no bearer token is present.
+
+### Logique de Paiement et Période d'Essai (14 Jours)
+Lorsqu'un nouvel utilisateur s'inscrit, l'application lui attribue automatiquement un abonnement en période d'essai de 14 jours (`createTrialSubscription` dans `subscription-service.ts`). 
+- Pendant l'essai, l'accès est complet.
+- À l'expiration, l'accès est bloqué (vérifié via `isAccessAllowed`) et l'utilisateur doit souscrire à une offre Stripe.
+- Le backend écoute les webhooks Stripe (`checkout.session.completed`, `invoice.paid`, etc.) pour réactiver l'abonnement en base de données de manière sécurisée.
+
+### Import CSV
+L'import CSV de cibles s'effectue via une route dédiée (`POST /api/campaigns/:id/targets/import`). L'application reçoit le texte brut du CSV, le parse avec `csv-parse`, extrait les champs reconnus (nom, email, téléphone, entreprise, rôle) et les insère en base de données tout en les liant au bon `userId` et à la bonne campagne.
+
+### État du Backend
+Le backend est actuellement **pleinement fonctionnel**. Les services métiers (Abonnements, Cibles, Playbooks IA via OpenAI, Webhooks Stripe, Authentification Supabase, Base de données Prisma) sont tous opérationnels, intégrés, et typés correctement en TypeScript.
 
 ## 14. API Documentation
 

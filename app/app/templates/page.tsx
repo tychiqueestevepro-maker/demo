@@ -15,9 +15,9 @@ export default function TemplatesPage() {
       />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((template) => (
-          <Card key={template.id}>
+          <Card key={template.id} className="transition hover:-translate-y-1">
             <CardContent className="pt-5">
-              <div className="grid h-10 w-10 place-items-center rounded-md bg-neutral-950 text-white">
+              <div className="grid h-11 w-11 place-items-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-500/20">
                 <FileText className="h-4 w-4" />
               </div>
               <Badge className="mt-5" tone="violet">{template.category}</Badge>
@@ -33,4 +33,3 @@ export default function TemplatesPage() {
     </>
   );
 }
-

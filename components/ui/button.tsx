@@ -9,10 +9,10 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-neutral-950 text-white shadow-sm hover:bg-neutral-800",
-        secondary: "border border-neutral-200 bg-white text-neutral-900 shadow-sm hover:bg-neutral-50",
+        default: "bg-violet-950 text-white shadow-sm hover:bg-violet-900",
+        secondary: "border border-violet-500/15 bg-white text-violet-950 shadow-sm hover:bg-violet-50",
         ghost: "text-neutral-700 hover:bg-neutral-100",
-        accent: "bg-violet-600 text-white shadow-sm hover:bg-violet-700",
+        accent: "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/25 hover:from-violet-700 hover:to-fuchsia-700",
         subtle: "bg-neutral-100 text-neutral-900 hover:bg-neutral-200",
       },
       size: {
@@ -39,4 +39,3 @@ export function Button({ className, variant, size, asChild = false, ...props }: 
   const Comp = asChild ? Slot : "button";
   return <Comp className={cn(buttonVariants({ variant, size, className }))} {...props} />;
 }
-

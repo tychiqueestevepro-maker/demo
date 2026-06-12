@@ -34,7 +34,7 @@ const memoryCards = [
   },
   {
     title: "Commercial",
-    text: "Keep warm opportunities moving with clear next steps, source-backed context and timely reminders.",
+    text: "Keep warm opportunities moving with clear next steps, saved prospect notes and timely reminders.",
     visual: "commercial",
   },
   {
@@ -56,16 +56,16 @@ export default function HomePage() {
               Every follow-up. <span className="font-bold">Instantly coordinated.</span>
             </h1>
             <p className="animate-fade-up delay-300 mt-8 max-w-xl text-lg leading-relaxed text-[#332252]/65">
-              Turn campaign goals, target history and scattered sources into one clear queue for your team.
+              Turn campaign goals, saved documents, prospect notes and conversation history into one clear queue for your team.
             </p>
 
             <div className="animate-fade-up delay-500 mt-9 flex w-full flex-col items-stretch gap-4 sm:w-auto sm:flex-row sm:items-start">
               <Link
-                href="/app/dashboard"
+                href="/signup"
                 className="group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl bg-violet-600 px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 transition-all hover:scale-[1.02] hover:bg-violet-700 active:scale-[0.98]"
               >
                 <span aria-hidden="true" className="animate-shimmer pointer-events-none absolute inset-0" />
-                Open the app
+                Start free trial
                 <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
               <Link
@@ -119,7 +119,7 @@ export default function HomePage() {
               Campaign work, brought into one rhythm.
             </h2>
             <p className="text-lg leading-relaxed text-[#332252]/60">
-              FollowPilot gives every campaign a command center, a source trail and a controlled execution loop.
+              FollowPilot gives every campaign a command center, a document space and a controlled execution loop.
             </p>
           </div>
 
@@ -136,13 +136,13 @@ export default function HomePage() {
           </FeatureBlock>
 
           <FeatureBlock
-            title="Sources & references"
-            text="Keep every draft connected to the CRM note, reply, document or target detail that justifies it."
-            cta="Keep context attached"
+            title="Documents & prospect notes"
+            text="Store campaign documents in one place, then attach prospect-specific notes, links and details where they belong."
+            cta="Keep campaign files organized"
           >
             <ProductImageDemo
               src="/product/source-coverage-feature-violet.png"
-              alt="FollowPilot source coverage product visual with large chart and source-backed follow-up suggestion"
+              alt="FollowPilot data directory product visual with campaign documents and prospect notes"
             />
           </FeatureBlock>
 
@@ -231,7 +231,7 @@ export default function HomePage() {
 
                 <div className="mb-6 rounded-3xl border border-white/10 bg-white/10 p-5">
                   <div className="flex items-end gap-2">
-                    <span className="text-5xl font-bold tracking-tight">$29.99</span>
+                    <span className="text-5xl font-bold tracking-tight">$19.99</span>
                     <span className="pb-2 text-sm font-medium text-white/55">/ month</span>
                   </div>
                   <p className="mt-3 rounded-2xl bg-emerald-400/12 px-4 py-3 text-sm font-semibold text-emerald-100">
@@ -243,7 +243,7 @@ export default function HomePage() {
                   {[
                     "Unified queue for every important follow-up across your tools",
                     "Stored conversation history so you always know where things stand",
-                    "Campaign context saved with notes, sources, decisions and next steps",
+                    "Campaign documents saved with prospect notes, decisions and next steps",
                     "AI drafts grounded in the full context of each discussion",
                     "Daily next-action list showing who needs attention and why",
                   ].map((item) => (
@@ -255,7 +255,7 @@ export default function HomePage() {
                 </div>
 
                 <Link
-                  href="/app/campaigns/new"
+                  href="/signup"
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-950/25 transition-colors hover:bg-violet-400"
                 >
                   Start free trial
@@ -272,22 +272,22 @@ export default function HomePage() {
           Know the next action.<br />Move the campaign forward.
         </h2>
         <p className="mb-10 max-w-2xl text-lg leading-relaxed text-[#332252]/55">
-          Open the command center, inspect the queue and turn messy campaign context into reviewed follow-ups.
+          Open the command center, inspect the queue and turn campaign documents plus prospect notes into reviewed follow-ups.
         </p>
 
         <div className="flex flex-col items-center gap-3 sm:flex-row">
           <Link
-            href="/app/dashboard"
+            href="/signup"
             className="group inline-flex items-center gap-2 rounded-full bg-violet-600 px-7 py-3 text-[15px] font-medium text-white transition-all hover:scale-[1.02] hover:bg-violet-700 active:scale-[0.98]"
           >
-            Open demo workspace
+            Start free trial
             <MousePointer2 className="size-4 opacity-70 transition-transform group-hover:translate-x-0.5" />
           </Link>
           <Link
-            href="/app/campaigns/new"
+            href="/login"
             className="inline-flex items-center gap-2 rounded-full border border-violet-500/15 bg-white px-7 py-3 text-[15px] font-medium text-violet-900/75 transition-colors hover:bg-violet-50 hover:text-violet-900"
           >
-            Start a campaign
+            Log in
           </Link>
         </div>
       </section>
@@ -311,12 +311,20 @@ function Navbar() {
           <a href="#use-cases" className="transition-colors hover:text-[#332252]/80">Use cases</a>
           <a href="#pricing" className="transition-colors hover:text-[#332252]/80">Pricing</a>
         </nav>
-        <Link
-          href="/app/campaigns/new"
-          className="rounded-xl border border-violet-500/15 bg-white px-4 py-2 text-sm font-medium text-violet-900/80 transition-colors hover:bg-violet-50 hover:text-violet-900"
-        >
-          Start
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/login"
+            className="rounded-xl border border-violet-500/15 bg-white px-4 py-2 text-sm font-medium text-violet-900/80 transition-colors hover:bg-violet-50 hover:text-violet-900"
+          >
+            Log in
+          </Link>
+          <Link
+            href="/signup"
+            className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-violet-700"
+          >
+            Sign up
+          </Link>
+        </div>
       </div>
     </header>
   );
@@ -360,16 +368,16 @@ function HeroDemo() {
           Campaign setup
         </span>
         <h2 className="text-2xl font-bold leading-tight sm:text-3xl xl:text-[2rem]">
-          Launch campaigns with the right context.
+          Prepare campaigns with the right context.
         </h2>
         <p className="mt-5 text-sm leading-relaxed text-white/80">
-          Define the goal, audience and sources before the queue starts moving.
+          Define the goal, audience and supporting documents before the queue starts moving.
         </p>
         <div className="mt-7 space-y-3">
           {[
             ["Goal-first", Target],
             ["Target audience", Users],
-            ["Source coverage", Layers3],
+            ["Documents & notes", Layers3],
           ].map(([label, Icon]) => (
             <div key={label as string} className="flex items-center gap-3 text-sm font-medium text-white/90">
               <span className="grid size-10 place-items-center rounded-xl bg-white/16 shadow-lg shadow-violet-950/15">
@@ -409,7 +417,7 @@ function HeroDemo() {
             </div>
 
             <h3 className="text-2xl font-bold tracking-tight text-[#332252]">Campaign setup</h3>
-            <p className="mt-2 max-w-md text-sm leading-relaxed text-[#332252]/55">Build a strong foundation for your outreach.</p>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-[#332252]/55">Build a strong foundation for manual follow-up.</p>
 
             <div className="mt-5 space-y-4">
               <SetupCard icon={<Flag className="size-5" />} title="What's the main goal?" status="Clear goal" tone="green">
@@ -426,9 +434,9 @@ function HeroDemo() {
                   </span>
                 </div>
               </SetupCard>
-              <SetupCard icon={<Mail className="size-5" />} title="What sources should AI use?" status="2 missing" tone="orange">
+              <SetupCard icon={<Mail className="size-5" />} title="What documents or notes are attached?" status="2 missing" tone="orange">
                 <div className="flex flex-wrap gap-2">
-                  {["CRM", "LinkedIn", "Email threads"].map((tag) => (
+                  {["CRM note", "LinkedIn", "Email thread"].map((tag) => (
                     <span key={tag} className="rounded-lg border border-violet-100 bg-white px-3 py-2 text-xs font-medium text-[#332252]/75">{tag}</span>
                   ))}
                 </div>
@@ -467,7 +475,7 @@ function HeroDemo() {
           {[
             ["Goal", "Meetings"],
             ["Audience", "1,250 targets"],
-            ["Sources", "3 connected"],
+            ["Docs/notes", "3 saved"],
             ["Progress", "75%"],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between gap-3 border-b border-violet-100 py-2 text-xs last:border-b-0">
@@ -637,7 +645,7 @@ function UseCaseModal({ type }: { type: "hr" | "commercial" | "recruiter" }) {
       icon: Target,
       rows: [
         ["Warm lead", "Reply today"],
-        ["Proposal", "Source attached"],
+        ["Proposal", "Note attached"],
         ["Renewal", "Decision pending"],
       ],
     },
