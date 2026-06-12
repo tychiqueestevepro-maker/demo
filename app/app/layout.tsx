@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const userRecord = await prisma.user.findUnique({ where: { id: userId } });
   
-  const userName = userRecord?.name || userRecord?.email || "Vini-Vidi";
+  const userName = userRecord?.name || userRecord?.email || "Verytis User";
   const initials = userName
     .split(" ")
     .filter(Boolean)

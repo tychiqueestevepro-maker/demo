@@ -747,7 +747,7 @@ export function AppSidebar({
               {user?.initials || "VV"}
             </span>
             <span className={cn("min-w-0", collapsed && "sr-only")}>
-              <span className="block truncate text-sm font-semibold text-white">{user?.name || "Vini-Vidi"}</span>
+              <span className="block truncate text-sm font-semibold text-white">{user?.name || "Verytis User"}</span>
               <span className="block truncate text-xs text-white/55">Account settings</span>
             </span>
           </Link>
