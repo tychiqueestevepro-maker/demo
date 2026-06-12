@@ -14,25 +14,72 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCampaign, getPlaybook, getTarget, targets, timelineEvents } from "@/lib/mock-data";
+import { getServerUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 
 type TargetPageProps = {
   params: Promise<{ id: string; targetId: string }>;
 };
 
-export async function generateStaticParams() {
-  return targets.map((target) => ({ id: target.campaignId, targetId: target.id }));
-}
-
 export default async function TargetDetailPage({ params }: TargetPageProps) {
   const { id, targetId } = await params;
-  const campaign = getCampaign(id);
-  const target = getTarget(targetId);
-  const stages = getPlaybook(id);
+  const { userId } = await getServerUser();
 
-  if (!campaign || !target) {
+  const campaign = await prisma.campaign.findUnique({ where: { id, userId } });
+  
+  const targetRecord = await prisma.campaignTarget.findUnique({
+    where: { id: targetId, userId },
+    include: {
+      currentStage: true,
+      followUps: true,
+      activityLogs: { orderBy: { createdAt: "desc" } }
+    }
+  });
+
+  const playbook = await prisma.campaignPlaybook.findFirst({
+    where: { campaignId: id, userId },
+    include: { stages: { orderBy: { order: "asc" } } },
+  });
+
+  if (!campaign || !targetRecord) {
     notFound();
   }
+
+  const stages = playbook?.stages || [];
+
+  const target = {
+    id: targetRecord.id,
+    name: targetRecord.name,
+    company: targetRecord.company || "Unknown Company",
+    role: targetRecord.role || "Unknown Role",
+    email: targetRecord.email || "No email",
+    status: targetRecord.status.replace(/_/g, " "),
+    priority: targetRecord.priority,
+    currentStep: targetRecord.currentStage?.name || "Initial",
+    nextAction: targetRecord.aiRecommendedAction || "Follow up",
+    summary: {
+      why: "they match the target profile",
+      happened: "we sent an initial outreach",
+      blocker: targetRecord.aiRisk || "waiting for their reply",
+      next: targetRecord.aiRecommendedAction || "send a follow-up message",
+    }
+  };
+
+  try {
+    if (targetRecord.aiSummary && targetRecord.aiSummary.trim().startsWith("{")) {
+      const parsed = JSON.parse(targetRecord.aiSummary);
+      target.summary = { ...target.summary, ...parsed };
+    }
+  } catch(e) {}
+
+  const events = targetRecord.activityLogs.map((log) => ({
+    id: log.id,
+    date: "Just now", // Format this properly if needed
+    title: log.type.replace(/_/g, " "),
+    description: log.message,
+    icon: log.type.includes("EMAIL") ? "email" : "system",
+    tone: "neutral" as any,
+  }));
 
   const nextMessage = `Hi ${target.name.split(" ")[0]}, quick follow-up on ${target.nextAction.toLowerCase()}.`;
 
@@ -47,8 +94,8 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
             <Info label="Role" value={target.role} />
             <Info label="Email / link" value={target.email} />
             <div className="flex flex-wrap gap-2">
-              <TargetStatusBadge status={target.status} />
-              <PriorityBadge priority={target.priority} />
+              <TargetStatusBadge status={target.status as any} />
+              <PriorityBadge priority={target.priority as any} />
               <Badge>{target.currentStep}</Badge>
             </div>
           </CardContent>
@@ -75,7 +122,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
             </div>
           </CardContent>
         </Card>
-        <ConversationContext target={target} events={timelineEvents.filter((event) => event.targetId === target.id)} />
+        <ConversationContext target={target as any} events={events as any} />
       </div>
       <div className="mt-6">
         <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -88,7 +135,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
             Update sequence with AI
           </Button>
         </div>
-        <TargetSequence stages={stages} currentStep={target.currentStep} />
+        <TargetSequence stages={stages as any} currentStep={target.currentStep} />
       </div>
       <div className="mt-6">
         <PageHeader title="Prospect notes and documents" description="Notes, profile links, conversation details, campaign documents, invoices, contracts, and custom links attached to this prospect." />

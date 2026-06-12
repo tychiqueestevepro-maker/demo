@@ -46,6 +46,31 @@ export default function SettingsPage() {
 }
 
 function AccountSettings() {
+  const [email, setEmail] = React.useState("");
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+
+  React.useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const { createClient } = await import("@supabase/supabase-js");
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        );
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setEmail(user.email || "");
+          const name = user.user_metadata?.name || "";
+          const parts = name.split(" ");
+          setFirstName(parts[0] || "");
+          setLastName(parts.slice(1).join(" ") || "");
+        }
+      } catch {}
+    };
+    fetchUser();
+  }, []);
+
   return (
     <SettingsCard
       icon={<UserRound className="h-5 w-5" />}
@@ -53,8 +78,17 @@ function AccountSettings() {
       description="Manage your personal account information and preferences"
     >
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="First Name"><Input defaultValue="Vini-Vidi" /></Field>
-        <Field label="Last Name"><Input placeholder="Enter your last name" /></Field>
+        <Field label="First Name">
+          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Enter your first name" />
+        </Field>
+        <Field label="Last Name">
+          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Enter your last name" />
+        </Field>
+        <div className="md:col-span-2">
+          <Field label="Email Address">
+            <Input value={email} readOnly className="bg-neutral-50 text-neutral-500 max-w-md" />
+          </Field>
+        </div>
       </div>
 
       <div className="mt-6 grid max-w-xs gap-5">
@@ -78,16 +112,79 @@ function AccountSettings() {
 }
 
 function SecuritySettings() {
+  const [currentPassword, setCurrentPassword] = React.useState("");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  const handleSave = async () => {
+    if (!newPassword || newPassword !== confirmPassword) {
+      alert("New passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      alert("Password must be at least 8 characters.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (error) {
+        alert(`Error updating password: ${error.message}`);
+      } else {
+        alert("Password updated successfully.");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+    } catch (err: any) {
+      alert(`Unexpected error: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <SettingsCard
       icon={<ShieldCheck className="h-5 w-5" />}
       title="Security Settings"
       description="Update your password and account security"
+      onSave={handleSave}
+      isSaving={isSaving}
     >
       <div className="grid max-w-xl gap-5">
-        <Field label="Current Password *"><Input type="password" placeholder="Enter your current password" /></Field>
-        <Field label="New Password *"><Input type="password" placeholder="Enter your new password (min. 8 characters)" /></Field>
-        <Field label="Confirm New Password *"><Input type="password" placeholder="Confirm your new password" /></Field>
+        <Field label="Current Password">
+          <Input 
+            type="password" 
+            placeholder="Enter your current password" 
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+          />
+        </Field>
+        <Field label="New Password *">
+          <Input 
+            type="password" 
+            placeholder="Enter your new password (min. 8 characters)" 
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+        </Field>
+        <Field label="Confirm New Password *">
+          <Input 
+            type="password" 
+            placeholder="Confirm your new password" 
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
+        </Field>
       </div>
     </SettingsCard>
   );
@@ -385,12 +482,16 @@ function SettingsCard({
   description,
   children,
   showSave = true,
+  onSave,
+  isSaving = false,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   children: React.ReactNode;
   showSave?: boolean;
+  onSave?: () => void;
+  isSaving?: boolean;
 }) {
   return (
     <Card className="overflow-hidden rounded-xl border-neutral-200 bg-white shadow-sm">
@@ -411,9 +512,13 @@ function SettingsCard({
         {children}
         {showSave ? (
           <div className="mt-8 border-t border-neutral-200 pt-6 text-right">
-            <Button variant="accent">
-              <Save className="h-4 w-4" />
-              Save Settings
+            <Button variant="accent" onClick={onSave} disabled={isSaving}>
+              {isSaving ? (
+                <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {isSaving ? "Saving..." : "Save Settings"}
             </Button>
           </div>
         ) : null}

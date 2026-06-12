@@ -3,7 +3,10 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { searchWorkspace } from "@/app/actions/search";
+import { addDataSource, deleteDataSource } from "@/app/actions/data-directory";
+import { markFollowUpCompleted, snoozeFollowUp } from "@/app/actions/follow-ups";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -33,6 +36,7 @@ import {
   Home,
   Inbox,
   Layers3,
+  LogOut,
   MailCheck,
   MapPinned,
   MessageCircle,
@@ -592,14 +596,35 @@ function toggleChoice(list: string[], item: string) {
   return list.includes(item) ? list.filter((value) => value !== item) : [...list, item];
 }
 
-export function AppSidebar() {
+type NotificationType = { id: string | number; title: string; target: string; campaign: string; time: string };
+
+export function AppSidebar({ 
+  user, 
+  initialNotifications = [] 
+}: { 
+  user?: { name?: string; email?: string; initials?: string },
+  initialNotifications?: NotificationType[]
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
-  const [notifications, setNotifications] = React.useState([
-    { id: 1, title: "Deadline reached: Follow-up due", target: "Jon Bell", campaign: "Northstar Q3", time: "Today" },
-    { id: 2, title: "Action required: Missing follow-up", target: "Marcus Lee", campaign: "Acme Docs", time: "Yesterday" },
-  ]);
+  const [notifications, setNotifications] = React.useState<NotificationType[]>(initialNotifications);
+
+  const handleLogout = async () => {
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+      await supabase.auth.signOut();
+      document.cookie = "sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      document.cookie = "sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      window.location.href = "/login";
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
     <aside className={cn(
@@ -609,7 +634,7 @@ export function AppSidebar() {
       <div className="absolute inset-0 bg-grid opacity-25" />
       <div className="relative flex min-h-[calc(100vh-2.5rem)] flex-col">
       <div className={cn("mb-8 flex items-center gap-3", collapsed ? "justify-center px-0" : "justify-between px-2")}>
-        <Link href="/" className={cn("flex min-w-0 items-center gap-3", collapsed && "justify-center")}>
+        <Link href="/app/dashboard" className={cn("flex min-w-0 items-center gap-3", collapsed && "justify-center")}>
         <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/15 text-white shadow-lg shadow-violet-950/20">
           <VerytisLogo className="h-7 w-7" />
         </div>
@@ -702,7 +727,7 @@ export function AppSidebar() {
           </div>
         )}
 
-        <div className={cn("flex items-center gap-2 rounded-2xl border border-white/15 bg-white/12 p-2 shadow-xl shadow-violet-950/10", collapsed && "justify-center border-transparent bg-transparent p-0 shadow-none")}>
+        <div className={cn("flex items-center gap-2 rounded-2xl border border-white/15 bg-white/12 p-2 shadow-xl shadow-violet-950/10", collapsed && "flex-col justify-center border-transparent bg-transparent p-0 shadow-none")}>
           <button
             type="button"
             aria-label="Notifications"
@@ -718,14 +743,22 @@ export function AppSidebar() {
             className={cn("flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-1.5 text-left transition hover:bg-white/12", collapsed && "flex-none justify-center px-0")}
             title="Profile"
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-sm font-bold text-violet-800 shadow-lg shadow-violet-950/15">
-              VV
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-sm font-bold text-violet-800 shadow-lg shadow-violet-950/15 uppercase">
+              {user?.initials || "VV"}
             </span>
             <span className={cn("min-w-0", collapsed && "sr-only")}>
-              <span className="block truncate text-sm font-semibold text-white">Vini-Vidi</span>
+              <span className="block truncate text-sm font-semibold text-white">{user?.name || "Vini-Vidi"}</span>
               <span className="block truncate text-xs text-white/55">Account settings</span>
             </span>
           </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Log out"
+            className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/14 text-white transition hover:bg-white/22", collapsed && "mt-2")}
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
       </div>
@@ -829,33 +862,23 @@ function VerytisLogo({ className }: { className?: string }) {
 
 function SidebarSearchItem({ collapsed }: { collapsed: boolean }) {
   const [query, setQuery] = React.useState("");
+  const [results, setResults] = React.useState<any[]>([]);
+  const [isPending, startTransition] = React.useTransition();
   const normalizedQuery = query.trim().toLowerCase();
-  const searchRows = [
-    ...campaigns.map((campaign) => ({
-      id: `campaign-${campaign.id}`,
-      title: campaign.name,
-      detail: campaign.goal,
-      type: "Campaign",
-      href: `/app/campaigns/${campaign.id}`,
-    })),
-    ...targets.map((target) => ({
-      id: `target-${target.id}`,
-      title: target.name,
-      detail: `${target.company} - ${target.nextAction}`,
-      type: "Target",
-      href: `/app/campaigns/${target.campaignId}/targets/${target.id}`,
-    })),
-    ...followUps.map((followUp) => ({
-      id: `followup-${followUp.id}`,
-      title: followUp.target,
-      detail: followUp.reason,
-      type: "Follow-up",
-      href: "/app/follow-ups",
-    })),
-  ];
-  const filteredRows = normalizedQuery
-    ? searchRows.filter((row) => `${row.title} ${row.detail} ${row.type}`.toLowerCase().includes(normalizedQuery)).slice(0, 8)
-    : searchRows.slice(0, 6);
+
+  React.useEffect(() => {
+    if (!normalizedQuery) {
+      setResults([]);
+      return;
+    }
+
+    startTransition(async () => {
+      const data = await searchWorkspace(normalizedQuery);
+      setResults(data);
+    });
+  }, [normalizedQuery]);
+
+  const filteredRows = normalizedQuery ? results : [];
 
   return (
     <Dialog.Root>
@@ -1574,13 +1597,47 @@ export function FollowUpQueue({ rows = followUps }: { rows?: FollowUp[] }) {
   );
 }
 
-export function FollowUpCampaignQueue() {
-  const firstCampaignWithQueue = campaigns.find((campaign) => followUps.some((item) => item.campaignId === campaign.id)) ?? campaigns[0];
-  const [selectedCampaignId, setSelectedCampaignId] = React.useState(firstCampaignWithQueue.id);
-  const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? firstCampaignWithQueue;
-  const campaignFollowUps = [...followUps.filter((item) => item.campaignId === selectedCampaign.id)]
+type FollowUpType = {
+  id: string;
+  campaignId: string;
+  targetId: string;
+  target: string;
+  campaign: string;
+  type: string;
+  reason: string;
+  priority: any;
+  status: string;
+  due: string;
+  dueDate: string;
+  missingContext: boolean;
+  messagePreview: string;
+  message: string;
+  step: string;
+};
+type FollowUpCampaignType = { id: string; name: string; status: string; type: string; goal: string; channel: string; followUpsDue: number };
+type FollowUpTargetType = { id: string; campaignId: string; name: string; company: string; role: string; email: string; status: string; priority: string; nextAction: string };
+
+export function FollowUpCampaignQueue({ 
+  initialFollowUps = [],
+  initialCampaigns = [],
+  initialTargets = []
+}: { 
+  initialFollowUps?: FollowUpType[];
+  initialCampaigns?: FollowUpCampaignType[];
+  initialTargets?: FollowUpTargetType[];
+}) {
+  const [items, setItems] = React.useState<FollowUpType[]>(initialFollowUps);
+  const firstCampaignWithQueue = initialCampaigns.find((campaign) => initialFollowUps.some((item) => item.campaignId === campaign.id)) ?? initialCampaigns[0];
+  const [selectedCampaignId, setSelectedCampaignId] = React.useState(firstCampaignWithQueue?.id ?? "");
+  const selectedCampaign = initialCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? firstCampaignWithQueue;
+  
+  if (!selectedCampaign) {
+    return <div className="p-8 text-center text-neutral-500">No campaigns or follow-ups available.</div>;
+  }
+
+  const campaignFollowUps = [...items.filter((item) => item.campaignId === selectedCampaign.id)]
     .sort((a, b) => followUpQueueScore(a) - followUpQueueScore(b));
-  const campaignTargets = getTargetsForCampaign(selectedCampaign.id);
+  const campaignTargets = initialTargets.filter((target) => target.campaignId === selectedCampaign.id);
   const nextItem = campaignFollowUps[0];
 
   return (
@@ -1597,12 +1654,12 @@ export function FollowUpCampaignQueue() {
               onChange={(event) => setSelectedCampaignId(event.target.value)}
               className="h-11 w-full rounded-md border border-violet-500/15 bg-white px-3 text-sm font-semibold text-neutral-950 shadow-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
             >
-              {campaigns.map((campaign) => (
+              {initialCampaigns.map((campaign) => (
                 <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
               ))}
             </select>
             <div className="mt-4 flex flex-wrap gap-2">
-              <CampaignStatusBadge status={selectedCampaign.status} />
+              <CampaignStatusBadge status={selectedCampaign.status as any} />
               <Badge tone="violet">{selectedCampaign.type}</Badge>
               <Badge>{selectedCampaign.followUpsDue} due</Badge>
               <ChannelLogoPill channels={campaignChannelValues(selectedCampaign.channel)} />
@@ -1631,7 +1688,7 @@ export function FollowUpCampaignQueue() {
           ) : null}
 
           {campaignFollowUps.map((item) => {
-            const target = targets.find((targetItem) => targetItem.id === item.targetId);
+            const target = initialTargets.find((targetItem) => targetItem.id === item.targetId);
             const href = target ? `/app/campaigns/${item.campaignId}/targets/${item.targetId}` : "/app/follow-ups";
 
             return (
@@ -1872,7 +1929,10 @@ export function Stepper({ steps, current }: { steps: string[]; current: number }
   );
 }
 
+import { createCampaignAction } from "@/app/actions/campaigns";
+
 export function CampaignWizard() {
+  const router = useRouter();
   const steps = ["Purpose", "Context", "Rules", "Targets", "Playbook"];
   const [step, setStep] = React.useState(0);
   const [type, setType] = React.useState<CampaignType>("Prospecting");
@@ -1883,6 +1943,19 @@ export function CampaignWizard() {
   const [cadence, setCadence] = React.useState("Balanced");
   const [tone, setTone] = React.useState("Executive");
   const [stopRulesByType, setStopRulesByType] = React.useState<Record<CampaignType, string[]>>(defaultStopRulesByType);
+  
+  // New States for Targets
+  const [wizardTargets, setWizardTargets] = React.useState<Array<{id: string, name: string, company: string, role: string, email: string, note?: string}>>([]);
+  const [targetDraft, setTargetDraft] = React.useState({ name: "", company: "", role: "", email: "" });
+  const [targetMode, setTargetMode] = React.useState<"paste" | "upload" | "manual">("manual");
+  const csvInputRef = React.useRef<HTMLInputElement>(null);
+  
+  // New States for Playbook
+  const [wizardPlaybookStages, setWizardPlaybookStages] = React.useState<PlaybookStage[]>(playbookStages.slice(0, 4));
+  const [isRegenerating, setIsRegenerating] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [editingStageId, setEditingStageId] = React.useState<string | null>(null);
+
   const form = useForm<z.infer<typeof wizardSchema>>({
     resolver: zodResolver(wizardSchema),
     defaultValues: {
@@ -1921,6 +1994,119 @@ export function CampaignWizard() {
       ...current,
       [type]: toggleChoice(current[type] ?? [], item),
     }));
+  };
+
+  const handleAddTarget = () => {
+    if (!targetDraft.name.trim() || !targetDraft.email.trim()) return;
+    setWizardTargets(prev => [...prev, { id: Date.now().toString(), ...targetDraft }]);
+    setTargetDraft({ name: "", company: "", role: "", email: "" });
+  };
+
+  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const header = lines[0].toLowerCase().split(",").map(h => h.trim().replace(/"/g, ""));
+      const nameIdx = header.findIndex(h => h.includes("name"));
+      const emailIdx = header.findIndex(h => h.includes("email"));
+      const companyIdx = header.findIndex(h => h.includes("company") || h.includes("org"));
+      const roleIdx = header.findIndex(h => h.includes("role") || h.includes("title") || h.includes("position"));
+      const parsed = lines.slice(1).map((line, i) => {
+        const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+        return {
+          id: `csv-${Date.now()}-${i}`,
+          name: nameIdx >= 0 ? cols[nameIdx] : cols[0] || "",
+          email: emailIdx >= 0 ? cols[emailIdx] : "",
+          company: companyIdx >= 0 ? cols[companyIdx] : "",
+          role: roleIdx >= 0 ? cols[roleIdx] : "",
+        };
+      }).filter(t => t.name);
+      setWizardTargets(prev => [...prev, ...parsed]);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    };
+    reader.readAsText(file);
+  };
+
+  const handlePasteTargets = (text: string) => {
+    // Tab or comma-separated rows from a spreadsheet paste
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    const parsed = lines.map((line, i) => {
+      const cols = line.split(/\t|,/).map(c => c.trim());
+      return {
+        id: `paste-${Date.now()}-${i}`,
+        name: cols[0] || "",
+        company: cols[1] || "",
+        role: cols[2] || "",
+        email: cols[3] || "",
+      };
+    }).filter(t => t.name);
+    setWizardTargets(prev => [...prev, ...parsed]);
+  };
+
+  const regenerationVariants: Record<string, string[]> = {
+    short: [
+      `Hi {{firstName}}, quick note — I noticed {{company}} runs a process we've helped optimize. Worth 10 minutes to compare notes?`,
+      `{{firstName}}, saw a few signals that {{company}} might benefit from what we've built. Happy to share specifics?`,
+      `Hey {{firstName}} — wanted to reach out because {{company}}'s context looked very relevant. Want a short breakdown?`,
+    ],
+    followup: [
+      `Following up briefly, {{firstName}}. No pressure — just wanted to make sure this landed before moving on.`,
+      `{{firstName}}, circling back in case timing is better this week. Totally understand if not.`,
+      `Quick follow-up, {{firstName}}. Still think there's something useful here if the moment is right.`,
+    ],
+    value: [
+      `One thing that resonates with teams like yours: cutting follow-up drift without a new tool. Want a quick demo?`,
+      `Sharing one concrete outcome: teams using this approach reclaim 2–3 hours per rep per week on follow-up coordination.`,
+      `Here's what tends to matter most for {{company}}-sized teams: keeping next actions visible without living in a CRM.`,
+    ],
+    breakup: [
+      `I'll wrap up here, {{firstName}}. If the timing changes, I'm easy to reach.`,
+      `Closing the loop for now — feel free to revisit this whenever it makes sense for you.`,
+      `I won't keep following up, but if {{company}}'s priorities shift, happy to reconnect.`,
+    ],
+  };
+
+  const handleRegenerate = async () => {
+    setIsRegenerating(true);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setWizardPlaybookStages(prev => prev.map((stage, i) => {
+      const pool = i === 0 ? regenerationVariants.short
+        : i === prev.length - 1 ? regenerationVariants.breakup
+        : i % 2 === 1 ? regenerationVariants.followup
+        : regenerationVariants.value;
+      const next = pool[Math.floor(Math.random() * pool.length)];
+      return { ...stage, message: next };
+    }));
+    setIsRegenerating(false);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const campaign = await createCampaignAction({
+        name: campaignName,
+        type: type,
+        goal: campaignGoal,
+        audience: form.getValues().audience || "",
+        cadence: selectedCadence,
+        tone: selectedTone,
+        targets: wizardTargets,
+        playbookStages: wizardPlaybookStages.map((stage, i) => ({
+          title: stage.title,
+          description: stage.condition || `Step ${i + 1}`,
+          prompt: stage.message,              // the real message template content
+          dayOffset: i === 0 ? 0 : i * 2,
+          channel: "Email",
+        })),
+      });
+      router.push(`/app/campaigns/${campaign.id}`);
+    } catch (error) {
+      console.error(error);
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -2041,10 +2227,61 @@ export function CampaignWizard() {
           {step === 3 && (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
-                {targetTableConfig.modes.map((mode) => (
-                  <button key={mode} className="rounded-2xl border border-violet-500/15 bg-white p-4 text-left font-semibold shadow-sm hover:bg-violet-50">{mode}</button>
+                {(["upload", "paste", "manual"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setTargetMode(mode)}
+                    className={cn(
+                      "rounded-2xl border p-4 text-left font-semibold transition",
+                      targetMode === mode
+                        ? "border-violet-500 bg-violet-50 ring-2 ring-violet-100"
+                        : "border-violet-500/15 bg-white hover:bg-violet-50"
+                    )}
+                  >
+                    {mode === "upload" ? "Upload CSV" : mode === "paste" ? "Paste target table" : "Add one target"}
+                  </button>
                 ))}
               </div>
+
+              {/* Hidden CSV file input */}
+              <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleCSVUpload} />
+
+              {targetMode === "upload" && (
+                <div className="rounded-2xl border border-dashed border-violet-400 bg-violet-50/40 p-6 text-center">
+                  <p className="mb-1 font-semibold text-neutral-950">Upload a CSV file</p>
+                  <p className="mb-4 text-sm text-neutral-500">Columns: name, email, company, role (any order, header required)</p>
+                  <Button variant="secondary" onClick={() => csvInputRef.current?.click()}>
+                    Choose CSV file
+                  </Button>
+                </div>
+              )}
+
+              {targetMode === "paste" && (
+                <div className="space-y-2">
+                  <p className="text-sm text-neutral-500">Paste rows from a spreadsheet — columns in order: Name, Company, Role, Email</p>
+                  <textarea
+                    className="h-36 w-full rounded-xl border border-violet-500/15 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+                    placeholder="Amelia Brooks&#9;Ferro Labs&#9;VP Finance&#9;amelia@ferrolabs.com"
+                    onBlur={e => { if (e.target.value.trim()) { handlePasteTargets(e.target.value); e.target.value = ""; } }}
+                  />
+                </div>
+              )}
+
+              {targetMode === "manual" && (
+                <div className="rounded-2xl border border-violet-500/15 bg-violet-50/30 p-4">
+                  <p className="mb-3 text-sm font-semibold">Add one target manually</p>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <Input placeholder="Name *" value={targetDraft.name} onChange={e => setTargetDraft(p => ({ ...p, name: e.target.value }))} />
+                    <Input placeholder="Email *" type="email" value={targetDraft.email} onChange={e => setTargetDraft(p => ({ ...p, email: e.target.value }))} />
+                    <Input placeholder="Company" value={targetDraft.company} onChange={e => setTargetDraft(p => ({ ...p, company: e.target.value }))} />
+                    <Input placeholder="Role" value={targetDraft.role} onChange={e => setTargetDraft(p => ({ ...p, role: e.target.value }))} />
+                  </div>
+                  <div className="mt-3 flex justify-end">
+                    <Button variant="secondary" onClick={handleAddTarget} disabled={!targetDraft.name || !targetDraft.email}>Add target</Button>
+                  </div>
+                </div>
+              )}
+
               <SetupSummary
                 title={`${contextProfile.targetSummaryLabel} carried into targets`}
                 items={[
@@ -2056,16 +2293,39 @@ export function CampaignWizard() {
               <div className="overflow-hidden rounded-2xl border border-violet-500/15">
                 <table className="w-full min-w-[760px] text-left text-sm">
                   <thead className="bg-violet-50 text-xs uppercase text-violet-900/55">
-                    <tr>{targetTableConfig.headers.map((head) => <th key={head} className="px-4 py-3">{head}</th>)}</tr>
+                    <tr>
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Company</th>
+                      <th className="px-4 py-3">Role</th>
+                      <th className="px-4 py-3">Email</th>
+                      <th className="px-4 py-3">Action</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {targets.slice(0, 3).map((target) => (
-                      <tr key={target.id} className="border-t border-neutral-100">
-                        {targetTableConfig.getRow(target).map((cell, index) => (
-                          <td key={`${target.id}-${targetTableConfig.headers[index]}`} className="px-4 py-3">{cell}</td>
-                        ))}
+                    {wizardTargets.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-8 text-center text-neutral-500">
+                          No targets added yet.
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      wizardTargets.map((target) => (
+                        <tr key={target.id} className="border-t border-neutral-100">
+                          <td className="px-4 py-3">{target.name}</td>
+                          <td className="px-4 py-3">{target.company}</td>
+                          <td className="px-4 py-3">{target.role}</td>
+                          <td className="px-4 py-3">{target.email}</td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => setWizardTargets(prev => prev.filter(t => t.id !== target.id))}
+                              className="text-xs text-red-500 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -2077,30 +2337,83 @@ export function CampaignWizard() {
                 Prepared from {selectedGoals.join(", ")}, {manualChannels.join(" + ") || "manual channels"}, and the {contextProfile.previewLabel.toLowerCase()} selected earlier. AI drafts reviewed next actions only; no message is sent from here.
               </AISummaryCard>
               <SetupSummary
-                title="Workspace memory"
+                title="Campaign memory"
                 items={[
-                  ["Workspace", [campaignName || "Untitled campaign", type]],
+                  ["Campaign", [campaignName || "Untitled campaign", type]],
                   [contextProfile.previewLabel, contextMemoryValues],
                   ["Manual rules", [selectedCadence, selectedTone, ...stopRules.slice(0, 2)]],
                 ]}
               />
               <div className="grid gap-4 lg:grid-cols-2">
-                {playbookStages.slice(0, 4).map((stage) => <PlaybookStageCard key={stage.id} stage={stage} />)}
+                {isRegenerating ? (
+                  <div className="col-span-2 py-12 text-center text-neutral-500">
+                    <RefreshCcw className="mx-auto mb-4 h-6 w-6 animate-spin" />
+                    <p>AI is generating new message variations...</p>
+                  </div>
+                ) : (
+                  wizardPlaybookStages.map((stage) => (
+                    editingStageId === stage.id ? (
+                      <Card key={stage.id}>
+                        <CardContent className="space-y-3 pt-5">
+                          <Input
+                            value={stage.title}
+                            onChange={e => setWizardPlaybookStages(prev => prev.map(s => s.id === stage.id ? { ...s, title: e.target.value } : s))}
+                            placeholder="Stage title"
+                          />
+                          <textarea
+                            className="w-full rounded-xl border border-violet-500/15 p-3 text-sm leading-6 focus:outline-none focus:ring-2 focus:ring-violet-200"
+                            rows={4}
+                            value={stage.message}
+                            onChange={e => setWizardPlaybookStages(prev => prev.map(s => s.id === stage.id ? { ...s, message: e.target.value } : s))}
+                            placeholder="Message content"
+                          />
+                          <Input
+                            value={stage.condition}
+                            onChange={e => setWizardPlaybookStages(prev => prev.map(s => s.id === stage.id ? { ...s, condition: e.target.value } : s))}
+                            placeholder="Condition / send rule"
+                          />
+                          <div className="flex justify-end">
+                            <Button size="sm" variant="secondary" onClick={() => setEditingStageId(null)}>Done</Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ) : (
+                      <div key={stage.id} className="relative">
+                        <PlaybookStageCard stage={stage} />
+                        <button
+                          onClick={() => setEditingStageId(stage.id)}
+                          className="absolute right-3 top-3 rounded-lg border border-violet-500/15 bg-white px-2 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    )
+                  ))
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button variant="secondary"><RefreshCcw className="h-4 w-4" />Regenerate</Button>
-                <Button variant="secondary"><FileText className="h-4 w-4" />Edit manually</Button>
-                {/* Backend integration point: persist the campaign, targets, and reviewed playbook. No outbound send occurs. */}
-                <Button variant="accent"><MailCheck className="h-4 w-4" />Create manual workspace</Button>
+                <Button variant="secondary" onClick={handleRegenerate} disabled={isRegenerating}>
+                  <RefreshCcw className={cn("h-4 w-4", isRegenerating && "animate-spin")} />Regenerate
+                </Button>
+                <Button variant="secondary" onClick={() => setEditingStageId(wizardPlaybookStages[0]?.id ?? null)}>
+                  <FileText className="h-4 w-4" />Edit manually
+                </Button>
               </div>
             </div>
           )}
           <div className="mt-6 flex justify-between border-t border-neutral-100 pt-5">
-            <Button variant="secondary" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Back</Button>
-            <Button onClick={() => setStep(Math.min(steps.length - 1, step + 1))}>
-              {step === steps.length - 1 ? "Save workspace" : "Continue"}
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+            <Button variant="secondary" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0 || isSaving}>Back</Button>
+            {step < steps.length - 1 ? (
+              <Button onClick={() => setStep(Math.min(steps.length - 1, step + 1))}>
+                Continue
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button onClick={handleSave} disabled={isSaving}>
+                {isSaving ? "Saving..." : "Save campaign"}
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -2414,14 +2727,51 @@ function ChannelLogoPill({ channels }: { channels: string[] }) {
   );
 }
 
-export function CampaignTabs({ campaignId }: { campaignId: string }) {
-  const campaignTargets = getTargetsForCampaign(campaignId);
-  const stages = getPlaybook(campaignId);
-  const sources = getSourcesForCampaign(campaignId);
-  const campaignFollowUps = followUps.filter((item) => item.campaignId === campaignId);
+export function CampaignTabs({
+  campaignId,
+  targets: campaignTargets = [],
+  playbookStages: stages = [],
+  dataSources: sources = [],
+  followUps: campaignFollowUps = [],
+  activityEvents = [],
+}: {
+  campaignId: string;
+  targets?: any[];
+  playbookStages?: any[];
+  dataSources?: any[];
+  followUps?: any[];
+  activityEvents?: any[];
+}) {
+  const [localSources, setLocalSources] = React.useState<any[]>(sources);
+
+  const handleAddDoc = async (draft: any) => {
+    const { addDataSource } = await import("@/app/actions/data-directory");
+    const source = await addDataSource({
+      title: draft.title,
+      type: draft.type,
+      url: draft.url || undefined,
+      description: draft.description || undefined,
+      campaignId,
+    });
+    setLocalSources((prev) => [
+      {
+        id: source.id,
+        title: source.title,
+        type: draft.type,
+        url: source.url || "",
+        description: source.description || "",
+        campaignId,
+        linkedCampaign: "",
+        importance: "MEDIUM",
+        lastChecked: "Just now",
+        missing: false,
+      },
+      ...prev,
+    ]);
+  };
 
   return (
-    <Tabs.Root defaultValue="overview" className="space-y-5">
+    <Tabs.Root defaultValue="targets" className="space-y-5">
       <Tabs.List className="flex gap-2 overflow-x-auto rounded-2xl border border-violet-500/15 bg-white p-1 shadow-xl shadow-violet-950/5">
         {["overview", "targets", "playbook", "follow-ups", "documents", "activity"].map((tab) => (
           <Tabs.Trigger key={tab} value={tab} className="rounded-xl px-3 py-2 text-sm font-semibold capitalize text-neutral-500 data-[state=active]:bg-violet-600 data-[state=active]:text-white">
@@ -2431,26 +2781,105 @@ export function CampaignTabs({ campaignId }: { campaignId: string }) {
       </Tabs.List>
       <Tabs.Content value="overview" className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
         <AISummaryCard>
-          Prioritize replies, then due follow-ups, then missing documents or prospect notes. Campaign health is strongest when every target has a visible next action.
+          {campaignTargets.length === 0
+            ? "Add your first prospects in the Targets tab. Once added, their follow-up actions and messages will appear here."
+            : "Prioritize replies, then due follow-ups, then missing documents or prospect notes. Campaign health is strongest when every target has a visible next action."}
         </AISummaryCard>
         <Card>
           <CardHeader><CardTitle>Next actions</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            {campaignFollowUps.slice(0, 3).map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-violet-500/10 bg-violet-50/60 p-3 text-sm">
-                <span>{item.target} - {item.step}</span>
-                <PriorityBadge priority={item.priority} />
-              </div>
-            ))}
+            {campaignFollowUps.length === 0 ? (
+              <p className="text-sm text-neutral-500">No follow-ups due. Add prospects to get started.</p>
+            ) : (
+              campaignFollowUps.slice(0, 3).map((item: any) => (
+                <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-violet-500/10 bg-violet-50/60 p-3 text-sm">
+                  <span>{item.target} - {item.reason}</span>
+                  <PriorityBadge priority={item.priority} />
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </Tabs.Content>
-      <Tabs.Content value="targets"><TargetTable rows={campaignTargets} /></Tabs.Content>
-      <Tabs.Content value="playbook" className="grid gap-4 lg:grid-cols-2">{stages.map((stage) => <PlaybookStageCard key={stage.id} stage={stage} />)}</Tabs.Content>
-      <Tabs.Content value="follow-ups"><FollowUpQueue rows={campaignFollowUps} /></Tabs.Content>
-      <Tabs.Content value="documents" className="grid gap-4 md:grid-cols-2">{sources.map((source) => <DataSourceCard key={source.id} source={source} />)}</Tabs.Content>
-      <Tabs.Content value="activity"><Timeline events={recentTimeline(campaignId)} /></Tabs.Content>
+      <Tabs.Content value="targets">
+        {campaignTargets.length === 0 ? (
+          <EmptyState title="No prospects yet" description="Prospects are added when you create or import targets into this campaign." />
+        ) : (
+          <TargetTable rows={campaignTargets as any} />
+        )}
+      </Tabs.Content>
+      <Tabs.Content value="playbook" className="grid gap-4 lg:grid-cols-2">
+        {stages.length === 0 ? (
+          <div className="col-span-2">
+            <EmptyState title="No playbook stages" description="Playbook stages are generated when you create a campaign using the wizard." />
+          </div>
+        ) : (
+          stages.map((stage: any) => <PlaybookStageCard key={stage.id} stage={stage} />)
+        )}
+      </Tabs.Content>
+      <Tabs.Content value="follow-ups">
+        {campaignFollowUps.length === 0 ? (
+          <EmptyState title="No follow-ups yet" description="Follow-ups appear here once prospects have been added and actions are triggered." />
+        ) : (
+          <FollowUpQueue rows={campaignFollowUps as any} />
+        )}
+      </Tabs.Content>
+      <Tabs.Content value="documents">
+        <CampaignDocumentsTab sources={localSources} onAdd={handleAddDoc} campaignId={campaignId} />
+      </Tabs.Content>
+      <Tabs.Content value="activity">
+        {activityEvents.length === 0 ? (
+          <EmptyState title="No activity yet" description="Activity is logged as you add prospects, send follow-ups, and update documents." />
+        ) : (
+          <Timeline events={activityEvents as any} />
+        )}
+      </Tabs.Content>
     </Tabs.Root>
+  );
+}
+
+
+function CampaignDocumentsTab({ sources, onAdd, campaignId }: { sources: any[]; onAdd: (draft: any) => void; campaignId: string }) {
+  const [draft, setDraft] = React.useState<DirectoryDraft>({ title: "", type: "Note", url: "", description: "" });
+  const [localSources, setLocalSources] = React.useState<any[]>(sources);
+
+  const handleAdd = async () => {
+    if (!draft.title.trim()) return;
+    await onAdd(draft);
+    setLocalSources((prev) => [{ id: Date.now().toString(), title: draft.title, type: draft.type, url: draft.url, description: draft.description, lastChecked: "Just now" }, ...prev]);
+    setDraft({ title: "", type: "Note", url: "", description: "" });
+  };
+
+  return (
+    <div className="space-y-6">
+      <DirectoryDraftForm
+        draft={draft}
+        onChange={setDraft}
+        onAdd={handleAdd}
+        title="Attach document to campaign"
+        buttonLabel="Add document"
+        placeholder="Contract, folder, invoice, reference link..."
+      />
+      {localSources.length > 0 ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {localSources.map((source: any) => (
+            <div key={source.id} className="rounded-2xl border border-violet-500/10 bg-white p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-neutral-950">{source.title}</p>
+                  <Badge tone="blue" className="mt-1">{String(source.type).replace(/_/g, " ")}</Badge>
+                  {source.description && <p className="mt-2 text-sm text-neutral-500">{source.description}</p>}
+                </div>
+                {source.url && <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:text-violet-700"><ExternalLink className="h-4 w-4" /></a>}
+              </div>
+              <p className="mt-3 text-xs text-neutral-400">Last checked: {source.lastChecked}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyState title="No documents attached" description="Add contracts, folders, invoices, checklists, or shared links used by this campaign." />
+      )}
+    </div>
   );
 }
 
@@ -2601,10 +3030,22 @@ const emptyDirectoryDraft: DirectoryDraft = {
 
 const directoryItemTypes = ["Document", "Link", "Note", "Drive folder", "Email thread", "Invoice", "Contract"];
 
-export function DataDirectoryWorkspace() {
-  const [selectedCampaignId, setSelectedCampaignId] = React.useState(campaigns[0]?.id ?? "");
-  const [selectedTargetId, setSelectedTargetId] = React.useState(targets.find((target) => target.campaignId === selectedCampaignId)?.id ?? "");
-  const [items, setItems] = React.useState<DataSource[]>(dataSources);
+type DirectoryDataSource = {
+  id: string; title: string; type: string; url: string; description: string; campaignId: string; targetId?: string; linkedCampaign?: string; linkedTarget?: string; missing?: boolean; importance: string; lastChecked: string;
+};
+
+export function DataDirectoryWorkspace({
+  initialCampaigns = [],
+  initialTargets = [],
+  initialDataSources = [],
+}: {
+  initialCampaigns?: any[];
+  initialTargets?: any[];
+  initialDataSources?: DirectoryDataSource[];
+}) {
+  const [selectedCampaignId, setSelectedCampaignId] = React.useState(initialCampaigns[0]?.id ?? "");
+  const [selectedTargetId, setSelectedTargetId] = React.useState(initialTargets.find((target) => target.campaignId === selectedCampaignId)?.id ?? "");
+  const [items, setItems] = React.useState<DirectoryDataSource[]>(initialDataSources);
   const [campaignDraft, setCampaignDraft] = React.useState<DirectoryDraft>({
     title: "Campaign folder",
     type: "Drive folder",
@@ -2618,31 +3059,43 @@ export function DataDirectoryWorkspace() {
     description: "Useful detail to keep before the next follow-up.",
   });
 
-  const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? campaigns[0];
-  const campaignTargets = targets.filter((target) => target.campaignId === selectedCampaign.id);
+  const selectedCampaign = initialCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? initialCampaigns[0];
+  const campaignTargets = initialTargets.filter((target) => target.campaignId === selectedCampaign?.id);
   const selectedTarget = campaignTargets.find((target) => target.id === selectedTargetId) ?? campaignTargets[0];
-  const campaignItems = items.filter((item) => item.campaignId === selectedCampaign.id && !item.targetId);
+  const campaignItems = items.filter((item) => item.campaignId === selectedCampaign?.id && !item.targetId);
   const targetItems = selectedTarget ? items.filter((item) => item.targetId === selectedTarget.id) : [];
-  const missingCount = items.filter((item) => item.campaignId === selectedCampaign.id && item.missing).length;
+  const missingCount = items.filter((item) => item.campaignId === selectedCampaign?.id && item.missing).length;
 
   const chooseCampaign = (campaignId: string) => {
-    const firstTarget = targets.find((target) => target.campaignId === campaignId);
+    const firstTarget = initialTargets.find((target) => target.campaignId === campaignId);
     setSelectedCampaignId(campaignId);
     setSelectedTargetId(firstTarget?.id ?? "");
   };
 
-  const addCampaignItem = () => {
+  if (!selectedCampaign) {
+    return <div className="p-8 text-center text-neutral-500">No campaigns or targets available.</div>;
+  }
+
+  const addCampaignItem = async () => {
     if (!campaignDraft.title.trim()) return;
+
+    const source = await addDataSource({
+      title: campaignDraft.title.trim(),
+      type: campaignDraft.type,
+      url: campaignDraft.url.trim() || undefined,
+      description: campaignDraft.description.trim() || undefined,
+      campaignId: selectedCampaign.id,
+    });
 
     setItems((current) => [
       {
-        id: `campaign-item-${Date.now()}`,
-        title: campaignDraft.title.trim(),
+        id: source.id,
+        title: source.title,
         type: campaignDraft.type,
-        url: campaignDraft.url.trim() || "#",
+        url: source.url || "",
         campaignId: selectedCampaign.id,
         linkedCampaign: selectedCampaign.name,
-        description: campaignDraft.description.trim() || "Campaign-level document or link.",
+        description: source.description || "",
         importance: "Medium",
         lastChecked: "Just now",
       },
@@ -2651,20 +3104,29 @@ export function DataDirectoryWorkspace() {
     setCampaignDraft(emptyDirectoryDraft);
   };
 
-  const addTargetItem = () => {
+  const addTargetItem = async () => {
     if (!selectedTarget || !targetDraft.title.trim()) return;
+
+    const source = await addDataSource({
+      title: targetDraft.title.trim(),
+      type: targetDraft.type,
+      url: targetDraft.url.trim() || undefined,
+      description: targetDraft.description.trim() || undefined,
+      campaignId: selectedCampaign.id,
+      targetId: selectedTarget.id,
+    });
 
     setItems((current) => [
       {
-        id: `target-item-${Date.now()}`,
-        title: targetDraft.title.trim(),
+        id: source.id,
+        title: source.title,
         type: targetDraft.type,
-        url: targetDraft.url.trim() || "#",
+        url: source.url || "",
         campaignId: selectedCampaign.id,
         targetId: selectedTarget.id,
         linkedCampaign: selectedCampaign.name,
         linkedTarget: selectedTarget.name,
-        description: targetDraft.description.trim() || "Prospect-specific note, document, or link.",
+        description: source.description || "",
         importance: "Medium",
         lastChecked: "Just now",
       },
@@ -2673,7 +3135,8 @@ export function DataDirectoryWorkspace() {
     setTargetDraft(emptyDirectoryDraft);
   };
 
-  const deleteItem = (itemId: string) => {
+  const deleteItem = async (itemId: string) => {
+    await deleteDataSource(itemId);
     setItems((current) => current.filter((item) => item.id !== itemId));
   };
 
@@ -2687,7 +3150,7 @@ export function DataDirectoryWorkspace() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
-              {campaigns.map((campaign) => (
+              {initialCampaigns.map((campaign) => (
                 <button
                   key={campaign.id}
                   type="button"
@@ -2732,7 +3195,7 @@ export function DataDirectoryWorkspace() {
               placeholder="Contract, onboarding folder, invoice PDF..."
             />
             <DirectoryItemList
-              items={campaignItems}
+              items={campaignItems as any}
               emptyTitle="No campaign documents yet"
               emptyDescription="Add contracts, folders, invoices, checklists, or shared links used by this campaign."
               onDelete={deleteItem}
@@ -2803,7 +3266,7 @@ export function DataDirectoryWorkspace() {
               disabled={!selectedTarget}
             />
             <DirectoryItemList
-              items={targetItems}
+              items={targetItems as any}
               emptyTitle="No prospect information yet"
               emptyDescription="Add a note, useful profile link, conversation detail, document, or email thread for this prospect."
               onDelete={deleteItem}
@@ -3001,7 +3464,8 @@ function DirectoryEditableItem({ item, onDelete }: { item: DataSource; onDelete:
 }
 
 export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
-  const [name, setName] = React.useState("");
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState("");
@@ -3021,10 +3485,16 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
       );
 
       if (mode === "signup") {
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { name: name || undefined } },
+          options: { 
+            data: { 
+              name: `${firstName} ${lastName}`.trim() || undefined,
+              first_name: firstName,
+              last_name: lastName
+            } 
+          },
         });
 
         if (signUpError) {
@@ -3032,9 +3502,14 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
           return;
         }
 
+        if (data?.session) {
+          document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=${data.session.expires_in}; SameSite=Lax; secure`;
+          document.cookie = `sb-refresh-token=${data.session.refresh_token}; path=/; max-age=${data.session.expires_in}; SameSite=Lax; secure`;
+        }
+
         setSuccess(true);
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
@@ -3042,6 +3517,11 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
         if (signInError) {
           setError(signInError.message);
           return;
+        }
+
+        if (data?.session) {
+          document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=${data.session.expires_in}; SameSite=Lax; secure`;
+          document.cookie = `sb-refresh-token=${data.session.refresh_token}; path=/; max-age=${data.session.expires_in}; SameSite=Lax; secure`;
         }
 
         window.location.href = "/app/dashboard";
@@ -3095,13 +3575,24 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
                   </div>
                 ) : null}
                 {mode === "signup" ? (
-                  <Field label="Name">
-                    <Input
-                      placeholder="Your name"
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                    />
-                  </Field>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="First name">
+                      <Input
+                        placeholder="First name"
+                        value={firstName}
+                        onChange={(event) => setFirstName(event.target.value)}
+                        required
+                      />
+                    </Field>
+                    <Field label="Last name">
+                      <Input
+                        placeholder="Last name"
+                        value={lastName}
+                        onChange={(event) => setLastName(event.target.value)}
+                        required
+                      />
+                    </Field>
+                  </div>
                 ) : null}
                 <Field label="Email">
                   <Input
@@ -3112,8 +3603,17 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
                     required
                   />
                 </Field>
-                <Field label="Password">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="password" className="text-sm font-semibold text-neutral-700">Password</label>
+                    {mode === "login" ? (
+                      <Link href="/forgot-password" className="text-sm font-semibold text-violet-600 hover:text-violet-700 hover:underline">
+                        Forgot password?
+                      </Link>
+                    ) : null}
+                  </div>
                   <Input
+                    id="password"
                     type="password"
                     placeholder="••••••••"
                     value={password}
@@ -3121,7 +3621,7 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
                     required
                     minLength={6}
                   />
-                </Field>
+                </div>
                 <Button type="submit" className="w-full" variant="accent" disabled={loading}>
                   {loading ? "Please wait..." : mode === "login" ? "Log in" : "Create account"}
                 </Button>

@@ -1,15 +1,55 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Clock3, MessageCircle, Plus, Users } from "lucide-react";
+import { format } from "date-fns";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { campaigns, followUps, targets } from "@/lib/mock-data";
+import { getServerUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 
-export default function DashboardPage() {
-  const replies = followUps.filter((item) => item.reason.toLowerCase().includes("reply"));
-  const dueToday = followUps.filter((item) => item.dueDate.toLowerCase().includes("today"));
-  const activeCampaigns = campaigns.filter((campaign) => campaign.status === "Active" || campaign.status === "Review");
+export default async function DashboardPage() {
+  const { userId } = await getServerUser();
+
+  const repliesCount = await prisma.followUp.count({
+    where: { userId, status: "REPLIED" },
+  });
+
+  const dueFollowUps = await prisma.followUp.findMany({
+    where: { userId, status: "DUE" },
+    orderBy: { dueAt: "asc" },
+    include: { target: true, campaign: true },
+    take: 10,
+  });
+
+  const targetsCount = await prisma.campaignTarget.count({
+    where: { userId },
+  });
+
+  const activeCampaignsData = await prisma.campaign.findMany({
+    where: { userId, status: { in: ["ACTIVE", "WAITING"] } },
+    include: {
+      targets: true,
+      followUps: true,
+    },
+  });
+
+  const activeCampaigns = activeCampaignsData.map((campaign) => {
+    const totalTargets = campaign.targets.length;
+    const completed = campaign.targets.filter((t) => t.status === "COMPLETED" || t.status === "INTERESTED").length;
+    const replies = campaign.targets.filter((t) => t.status === "REPLIED").length;
+    const followUpsDue = campaign.followUps.filter((f) => f.status === "DUE").length;
+    const progress = totalTargets > 0 ? Math.round((completed / totalTargets) * 100) : 0;
+
+    return {
+      ...campaign,
+      totalTargets,
+      completed,
+      replies,
+      followUpsDue,
+      progress,
+    };
+  });
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -33,9 +73,9 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-6 grid gap-3 md:grid-cols-4">
-          <SnapshotCard icon={<MessageCircle className="h-5 w-5" />} label="Replies waiting" value={String(replies.length)} tone="emerald" />
-          <SnapshotCard icon={<Clock3 className="h-5 w-5" />} label="Due today" value={String(dueToday.length)} tone="violet" />
-          <SnapshotCard icon={<Users className="h-5 w-5" />} label="Targets tracked" value={String(targets.length)} tone="blue" />
+          <SnapshotCard icon={<MessageCircle className="h-5 w-5" />} label="Replies waiting" value={String(repliesCount)} tone="emerald" />
+          <SnapshotCard icon={<Clock3 className="h-5 w-5" />} label="Due today" value={String(dueFollowUps.length)} tone="violet" />
+          <SnapshotCard icon={<Users className="h-5 w-5" />} label="Targets tracked" value={String(targetsCount)} tone="blue" />
           <SnapshotCard icon={<CheckCircle2 className="h-5 w-5" />} label="Campaigns running" value={String(activeCampaigns.length)} tone="amber" />
         </div>
       </section>
@@ -52,7 +92,12 @@ export default function DashboardPage() {
             </Button>
           </CardHeader>
           <CardContent className="space-y-3">
-            {followUps.map((item, index) => (
+            {dueFollowUps.length === 0 && (
+              <div className="rounded-2xl border border-violet-500/10 bg-violet-50/50 p-6 text-center text-sm text-[#120b2f]/58">
+                No follow-ups due right now.
+              </div>
+            )}
+            {dueFollowUps.map((item, index) => (
               <Link
                 key={item.id}
                 href={`/app/campaigns/${item.campaignId}/targets/${item.targetId}`}
@@ -62,13 +107,13 @@ export default function DashboardPage() {
                   {index + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate font-semibold text-[#120b2f]">{item.target}</span>
-                  <span className="mt-1 block text-sm leading-6 text-[#120b2f]/58">{item.reason}</span>
-                  <span className="mt-2 block text-xs font-semibold text-violet-700">{item.campaign}</span>
+                  <span className="block truncate font-semibold text-[#120b2f]">{item.target.name}</span>
+                  <span className="mt-1 block text-sm leading-6 text-[#120b2f]/58">{item.reason || "Follow-up due"}</span>
+                  <span className="mt-2 block text-xs font-semibold text-violet-700">{item.campaign.name}</span>
                 </span>
                 <span className="flex flex-wrap items-start gap-2 md:justify-end">
-                  <Badge tone={item.priority === "High" ? "rose" : item.priority === "Medium" ? "amber" : "blue"}>{item.priority}</Badge>
-                  <Badge>{item.dueDate}</Badge>
+                  <Badge tone={item.priority === "HIGH" || item.priority === "URGENT" ? "rose" : item.priority === "MEDIUM" ? "amber" : "blue"}>{item.priority}</Badge>
+                  <Badge>{format(new Date(item.dueAt), "MMM d")}</Badge>
                 </span>
               </Link>
             ))}
@@ -82,6 +127,11 @@ export default function DashboardPage() {
           <Button asChild size="sm" variant="secondary"><Link href="/app/campaigns">Open campaigns</Link></Button>
         </div>
         <div className="space-y-3">
+          {activeCampaigns.length === 0 && (
+            <div className="rounded-3xl border border-violet-500/15 bg-white p-6 text-center text-sm text-[#120b2f]/58 shadow-xl shadow-violet-950/5">
+              No active campaigns.
+            </div>
+          )}
           {activeCampaigns.map((campaign) => (
             <Link
               key={campaign.id}
@@ -91,20 +141,19 @@ export default function DashboardPage() {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate font-semibold text-[#120b2f]">{campaign.name}</p>
-                  <Badge tone="emerald">{campaign.type}</Badge>
+                  <Badge tone="emerald">{campaign.type.replace("_", " ")}</Badge>
                 </div>
                 <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#120b2f]/55">{campaign.goal}</p>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-[#120b2f]/45">
-                  <span>Owner: {campaign.owner}</span>
-                  <span>Deadline: {campaign.deadline}</span>
-                  <span>{campaign.channel}</span>
+                  {campaign.deadline && <span>Deadline: {format(new Date(campaign.deadline), "MMM d, yyyy")}</span>}
+                  {campaign.channel && <span>{campaign.channel}</span>}
                 </div>
               </div>
 
               <div>
                 <div className="mb-2 flex items-center justify-between text-xs font-semibold text-[#120b2f]/55">
                   <span>{campaign.progress}% complete</span>
-                  <span>{campaign.targets} targets</span>
+                  <span>{campaign.totalTargets} targets</span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-violet-100">
                   <div className="h-full rounded-full bg-violet-600" style={{ width: `${campaign.progress}%` }} />
@@ -166,3 +215,4 @@ function SnapshotCard({
     </div>
   );
 }
+

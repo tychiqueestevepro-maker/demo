@@ -13,8 +13,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FollowPilot - Campaign follow-up cockpit",
+  metadataBase: new URL("https://verytis.com"),
+  title: "Verytis",
   description: "Create manual campaign playbooks, target summaries, follow-up queues, and data directories.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/logo.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-icon.png" },
+    ],
+  },
 };
 
 export default function RootLayout({

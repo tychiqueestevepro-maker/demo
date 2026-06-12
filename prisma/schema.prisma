@@ -20,6 +20,7 @@ enum CampaignType {
 enum CampaignStatus {
   DRAFT
   ACTIVE
+  PAUSED
   WAITING
   BLOCKED
   COMPLETED

@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
 
 import { prisma } from "@/lib/db";
@@ -46,6 +47,12 @@ export async function requireUser(request: NextRequest): Promise<AuthContext> {
         email: user.email,
         name: getSupabaseDisplayName(user.user_metadata),
         avatarUrl: getSupabaseAvatarUrl(user.user_metadata),
+        subscription: {
+          create: {
+            status: "trialing",
+            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          },
+        },
       },
     });
 
@@ -103,4 +110,63 @@ export function assertOwned<T>(record: (T & { userId: string }) | null, userId: 
   }
 
   return record;
+}
+
+export async function getServerUser(): Promise<AuthContext & { email?: string; name?: string; avatarUrl?: string }> {
+  const cookieStore = await cookies();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  if (!supabaseUrl) {
+    throw new ApiError(401, "Authentication required.");
+  }
+
+  const accessToken = cookieStore.get("sb-access-token")?.value
+    ?? cookieStore.get(`sb-${new URL(supabaseUrl).hostname.split(".")[0]}-auth-token`)?.value;
+
+  if (accessToken) {
+    const supabase = createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser(accessToken);
+
+    if (user?.id) {
+      // Upsert the user to ensure they exist in the DB (for new signups)
+      const name = getSupabaseDisplayName(user.user_metadata);
+      const avatarUrl = getSupabaseAvatarUrl(user.user_metadata);
+      
+      try {
+        await prisma.user.upsert({
+          where: { id: user.id },
+          update: {
+            email: user.email,
+            name: name,
+            avatarUrl: avatarUrl,
+          },
+          create: {
+            id: user.id,
+            email: user.email || "",
+            name: name,
+            avatarUrl: avatarUrl,
+            subscription: {
+              create: {
+                status: "trialing",
+                trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+              },
+            },
+          },
+        });
+      } catch (error) {
+        console.error("Failed to sync user to database:", error);
+      }
+
+      return { 
+        userId: user.id,
+        email: user.email,
+        name: name || undefined,
+        avatarUrl: avatarUrl || undefined
+      };
+    }
+  }
+
+  throw new ApiError(401, "Authentication required.");
 }
