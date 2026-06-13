@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
         if (!subscriptionId) break;
 
         const sub = await stripe.subscriptions.retrieve(subscriptionId);
-        const periodEnd = new Date((sub as any).current_period_end * 1000);
+        const periodEndTimestamp = (sub as any).current_period_end ?? (sub as any).items?.data?.[0]?.current_period_end ?? Math.floor(Date.now() / 1000 + 30 * 24 * 60 * 60);
+        const periodEnd = new Date(periodEndTimestamp * 1000);
 
         await activateSubscription(
           userId,
@@ -109,7 +110,8 @@ export async function POST(request: NextRequest) {
         const userId = sub.metadata?.userId;
         if (!userId) break;
 
-        const periodEnd = new Date(sub.current_period_end * 1000);
+        const periodEndTimestamp = sub.current_period_end ?? (sub as any).items?.data?.[0]?.current_period_end ?? Math.floor(Date.now() / 1000 + 30 * 24 * 60 * 60);
+        const periodEnd = new Date(periodEndTimestamp * 1000);
         await updateSubscriptionPeriod(userId, periodEnd);
         break;
       }

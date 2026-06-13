@@ -234,6 +234,7 @@ function BillingSettings() {
   const [invoices, setInvoices] = React.useState<{ id: string; name: string; createdAt: string }[]>([]);
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
   const [subscribeLoading, setSubscribeLoading] = React.useState(false);
+  const [discountLoading, setDiscountLoading] = React.useState(false);
   const [subscription, setSubscription] = React.useState<{
     plan: string;
     status: string;
@@ -242,6 +243,7 @@ function BillingSettings() {
     isExpired: boolean;
     daysRemaining: number | null;
     trialEndsAt: string | null;
+    hasUsedDiscount: boolean;
   } | null>(null);
 
   // Fetch subscription and invoices on mount
@@ -279,6 +281,38 @@ function BillingSettings() {
 
     fetchData();
   }, []);
+
+  const handleApplyDiscount = async () => {
+    setDiscountLoading(true);
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch("/api/subscription/discount", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        alert("Success! Your 30% discount has been applied to your subscription.");
+        window.location.reload();
+      } else {
+        const errData = await response.json();
+        alert(errData.error || "Failed to apply discount.");
+      }
+    } catch (err: any) {
+      alert("Error applying discount: " + err.message);
+    } finally {
+      setDiscountLoading(false);
+    }
+  };
 
   const handleSubscribe = async () => {
     setSubscribeLoading(true);
@@ -447,11 +481,13 @@ function BillingSettings() {
             <div>
               <p className="font-semibold text-[#120b2f]">Subscription cancellation</p>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-[#120b2f]/60">
-                Review the retention offer before cancelling your subscription.
+                {subscription?.hasUsedDiscount 
+                  ? "Cancel your active subscription." 
+                  : "Review the retention offer before cancelling your subscription."}
               </p>
             </div>
             {cancelStep === "idle" ? (
-              <Button type="button" variant="secondary" onClick={() => setCancelStep("offer")}>
+              <Button type="button" variant="secondary" onClick={() => setCancelStep(subscription?.hasUsedDiscount ? "confirm" : "offer")}>
                 Cancel subscription
               </Button>
             ) : null}
@@ -465,11 +501,11 @@ function BillingSettings() {
                 Your monthly price becomes <strong>$13.99</strong> instead of <strong>$19.99</strong>.
               </p>
               <div className="mt-4 flex flex-wrap justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={() => setCancelStep("confirm")}>
+                <Button type="button" variant="secondary" onClick={() => setCancelStep("confirm")} disabled={discountLoading}>
                   Continue cancellation
                 </Button>
-                <Button type="button" variant="accent" onClick={() => setCancelStep("idle")}>
-                  Keep 30% discount
+                <Button type="button" variant="accent" onClick={handleApplyDiscount} disabled={discountLoading}>
+                  {discountLoading ? "Applying..." : "Keep 30% discount"}
                 </Button>
               </div>
             </div>

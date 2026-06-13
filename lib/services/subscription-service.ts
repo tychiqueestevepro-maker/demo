@@ -14,6 +14,7 @@ export type SubscriptionInfo = {
   daysRemaining: number | null;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  hasUsedDiscount: boolean;
 };
 
 export async function createTrialSubscription(userId: string): Promise<void> {
@@ -61,6 +62,7 @@ export async function getSubscription(userId: string): Promise<SubscriptionInfo 
     daysRemaining,
     stripeCustomerId: sub.stripeCustomerId,
     stripeSubscriptionId: sub.stripeSubscriptionId,
+    hasUsedDiscount: sub.hasUsedDiscount,
   };
 }
 
