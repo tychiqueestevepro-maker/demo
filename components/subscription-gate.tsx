@@ -29,9 +29,12 @@ export function SubscriptionGate({ children }: { children: React.ReactNode }) {
       const data = await response.json();
       if (data.url) {
         window.location.href = data.url;
+      } else {
+        alert(data.error || "An unknown error occurred.");
       }
-    } catch {
-      // Handle error silently
+    } catch (err: any) {
+      console.error(err);
+      alert("Failed to initiate checkout: " + err.message);
     } finally {
       setLoading(false);
     }

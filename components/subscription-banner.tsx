@@ -27,9 +27,11 @@ export function SubscriptionBanner() {
 
       if (data.url) {
         window.location.href = data.url;
+      } else {
+        alert(data.error || "An unknown error occurred.");
       }
-    } catch {
-      // Handle error silently
+    } catch (err: any) {
+      alert("Failed to initiate checkout: " + err.message);
     } finally {
       setLoading(false);
     }

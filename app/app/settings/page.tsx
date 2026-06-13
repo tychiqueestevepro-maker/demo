@@ -301,9 +301,11 @@ function BillingSettings() {
       const data = await response.json();
       if (data.url) {
         window.location.href = data.url;
+      } else {
+        alert(data.error || "An unknown error occurred.");
       }
-    } catch {
-      // Error handled silently
+    } catch (err: any) {
+      alert("Failed to initiate checkout: " + err.message);
     } finally {
       setSubscribeLoading(false);
     }
