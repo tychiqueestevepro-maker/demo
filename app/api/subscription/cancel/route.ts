@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+
 import { requireUser } from "@/lib/auth";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/db";
@@ -13,18 +14,22 @@ export async function POST(request: NextRequest) {
 
     const sub = await prisma.subscription.findUnique({ where: { userId } });
 
-    if (!sub || !sub.stripeCustomerId) {
-      return NextResponse.json({ error: "No Stripe customer found." }, { status: 400 });
+    if (!sub || !sub.stripeSubscriptionId) {
+      return NextResponse.json({ error: "No active subscription found." }, { status: 400 });
     }
 
-    const origin = request.headers.get("origin") || "https://www.verytis.com";
-
-    const session = await stripe.billingPortal.sessions.create({
-      customer: sub.stripeCustomerId,
-      return_url: `${origin}/app/settings?tab=billing`,
+    // Cancel at period end (user keeps access until end of billing cycle)
+    await stripe.subscriptions.update(sub.stripeSubscriptionId, {
+      cancel_at_period_end: true,
     });
 
-    return NextResponse.json({ url: session.url });
+    // Mark subscription as cancelling in our DB
+    await prisma.subscription.update({
+      where: { userId },
+      data: { cancelledAt: new Date() },
+    });
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     const status = error instanceof Error && "status" in error ? (error as { status: number }).status : 500;
     const message = error instanceof Error ? error.message : "Internal server error";

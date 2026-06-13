@@ -230,10 +230,13 @@ function SecuritySettings() {
 }
 
 function BillingSettings() {
-  const [portalLoading, setPortalLoading] = React.useState(false);
+  const [cancelStep, setCancelStep] = React.useState<"idle" | "offer" | "confirm" | "cancelled">("idle");
   const [invoices, setInvoices] = React.useState<{ id: string; name: string; createdAt: string }[]>([]);
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
   const [subscribeLoading, setSubscribeLoading] = React.useState(false);
+  const [discountLoading, setDiscountLoading] = React.useState(false);
+  const [cancelLoading, setCancelLoading] = React.useState(false);
+  const [reactivateLoading, setReactivateLoading] = React.useState(false);
   const [subscription, setSubscription] = React.useState<{
     plan: string;
     status: string;
@@ -243,6 +246,7 @@ function BillingSettings() {
     daysRemaining: number | null;
     trialEndsAt: string | null;
     hasUsedDiscount: boolean;
+    isCancelling: boolean;
   } | null>(null);
 
   // Fetch subscription and invoices on mount
@@ -281,8 +285,8 @@ function BillingSettings() {
     fetchData();
   }, []);
 
-  const handlePortal = async () => {
-    setPortalLoading(true);
+  const handleApplyDiscount = async () => {
+    setDiscountLoading(true);
     try {
       const { createClient } = await import("@supabase/supabase-js");
       const supabase = createClient(
@@ -291,7 +295,7 @@ function BillingSettings() {
       );
       const { data: { session } } = await supabase.auth.getSession();
 
-      const response = await fetch("/api/stripe/portal", {
+      const response = await fetch("/api/subscription/discount", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session?.access_token}`,
@@ -299,16 +303,43 @@ function BillingSettings() {
         },
       });
 
-      const data = await response.json();
-      if (data.url) {
-        window.location.href = data.url;
+      if (response.ok) {
+        alert("Success! Your 30% discount has been applied to your subscription.");
+        window.location.reload();
       } else {
-        alert(data.error || "An unknown error occurred.");
+        const errData = await response.json();
+        alert(errData.error || "Failed to apply discount.");
       }
     } catch (err: any) {
-      alert("Error opening portal: " + err.message);
+      alert("Error applying discount: " + err.message);
     } finally {
-      setPortalLoading(false);
+      setDiscountLoading(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    setReactivateLoading(true);
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch("/api/subscription/reactivate", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+
+      if (response.ok) {
+        alert("Subscription reactivated successfully!");
+        window.location.reload();
+      } else {
+        const errData = await response.json();
+        alert(errData.error || "Failed to reactivate.");
+      }
+    } catch {
+      alert("Network error. Please try again.");
+    } finally {
+      setReactivateLoading(false);
     }
   };
 
@@ -435,9 +466,7 @@ function BillingSettings() {
               <p className="font-semibold text-[#120b2f]">Current subscription</p>
               <p className="mt-1 text-sm text-[#120b2f]/55">Your Solo plan is active at $19.99 per month.</p>
             </div>
-            <Button variant="secondary" onClick={handlePortal} disabled={portalLoading}>
-              {portalLoading ? "Redirecting..." : "Manage billing"}
-            </Button>
+            <Button variant="secondary" onClick={handleSubscribe}>Manage billing</Button>
           </div>
         </div>
       ) : null}
@@ -474,6 +503,99 @@ function BillingSettings() {
         )}
       </div>
 
+      {/* Cancellation flow for active subscriptions */}
+      {subscription?.isActive && !subscription?.isCancelling ? (
+        <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50/60 p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="font-semibold text-[#120b2f]">Subscription cancellation</p>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#120b2f]/60">
+                {subscription?.hasUsedDiscount 
+                  ? "Cancel your active subscription." 
+                  : "Review the retention offer before cancelling your subscription."}
+              </p>
+            </div>
+            {cancelStep === "idle" ? (
+              <Button type="button" variant="secondary" onClick={() => setCancelStep(subscription?.hasUsedDiscount ? "confirm" : "offer")}>
+                Cancel subscription
+              </Button>
+            ) : null}
+          </div>
+
+          {cancelStep === "offer" ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
+              <p className="text-sm font-semibold text-emerald-700">Before you unsubscribe</p>
+              <p className="mt-2 text-xl font-bold text-[#120b2f]">Keep Solo with 30% off</p>
+              <p className="mt-1 text-sm text-[#120b2f]/60">
+                Your monthly price becomes <strong>$13.99</strong> instead of <strong>$19.99</strong>.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={() => setCancelStep("confirm")} disabled={discountLoading}>
+                  Continue cancellation
+                </Button>
+                <Button type="button" variant="accent" onClick={handleApplyDiscount} disabled={discountLoading}>
+                  {discountLoading ? "Applying..." : "Keep 30% discount"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {cancelStep === "confirm" ? (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-white p-4">
+              <p className="text-sm font-semibold text-rose-700">Confirm unsubscribe</p>
+              <p className="mt-2 text-sm leading-6 text-[#120b2f]/60">
+                Your workspace will keep access until the end of the current billing period. You can reactivate later from Billing.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={() => setCancelStep("idle")}>
+                  Keep subscription
+                </Button>
+                <Button
+                  type="button"
+                  className="border border-rose-600 bg-rose-600 text-white hover:bg-rose-700"
+                  disabled={cancelLoading}
+                  onClick={async () => {
+                    setCancelLoading(true);
+                    try {
+                      const res = await fetch("/api/subscription/cancel", { method: "POST" });
+                      if (!res.ok) {
+                        const data = await res.json();
+                        alert(data.error || "Failed to cancel subscription.");
+                      } else {
+                        setCancelStep("cancelled");
+                      }
+                    } catch {
+                      alert("Network error. Please try again.");
+                    } finally {
+                      setCancelLoading(false);
+                    }
+                  }}
+                >
+                  {cancelLoading ? "Cancelling..." : "Unsubscribe"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {cancelStep === "cancelled" ? (
+            <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
+              <p className="font-semibold text-[#120b2f]">Subscription scheduled to cancel</p>
+              <p className="mt-1 text-sm text-[#120b2f]/60">Your plan remains active until the end of the current billing period.</p>
+              <Button type="button" variant="secondary" className="mt-4" onClick={() => window.location.reload()}>
+                Refresh page
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : subscription?.isActive && subscription?.isCancelling ? (
+        <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-4">
+          <p className="font-semibold text-[#120b2f]">Subscription scheduled to cancel</p>
+          <p className="mt-1 text-sm text-[#120b2f]/60">Your plan remains active until the end of the current billing period.</p>
+          <Button type="button" variant="secondary" className="mt-4" onClick={handleReactivate} disabled={reactivateLoading}>
+            {reactivateLoading ? "Reactivating..." : "Reactivate subscription"}
+          </Button>
+        </div>
+      ) : null}
     </SettingsCard>
   );
 }
