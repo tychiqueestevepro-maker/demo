@@ -50,6 +50,8 @@ function AccountSettings() {
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
 
+  const [isSaving, setIsSaving] = React.useState(false);
+
   React.useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -61,21 +63,58 @@ function AccountSettings() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           setEmail(user.email || "");
-          const name = user.user_metadata?.name || "";
-          const parts = name.split(" ");
-          setFirstName(parts[0] || "");
-          setLastName(parts.slice(1).join(" ") || "");
+          const name = user.user_metadata?.name || user.user_metadata?.full_name || user.user_metadata?.first_name || "";
+          if (user.user_metadata?.first_name || user.user_metadata?.last_name) {
+            setFirstName(user.user_metadata.first_name || "");
+            setLastName(user.user_metadata.last_name || "");
+          } else {
+            const parts = name.split(" ");
+            setFirstName(parts[0] || "");
+            setLastName(parts.slice(1).join(" ") || "");
+          }
         }
       } catch {}
     };
     fetchUser();
   }, []);
 
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      );
+
+      const fullName = `${firstName} ${lastName}`.trim();
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          name: fullName || undefined,
+          first_name: firstName || undefined,
+          last_name: lastName || undefined,
+        }
+      });
+
+      if (error) {
+        alert(`Error updating profile: ${error.message}`);
+      } else {
+        alert("Profile updated successfully. Refresh the page to see changes in the sidebar.");
+      }
+    } catch (err: any) {
+      alert(`Unexpected error: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <SettingsCard
       icon={<UserRound className="h-5 w-5" />}
       title="Account Settings"
       description="Manage your personal account information and preferences"
+      onSave={handleSave}
+      isSaving={isSaving}
     >
       <div className="grid gap-4 md:grid-cols-2">
         <Field label="First Name">

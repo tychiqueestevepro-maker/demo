@@ -90,7 +90,7 @@ function getSupabaseDisplayName(metadata: unknown) {
   }
 
   const values = metadata as Record<string, unknown>;
-  const name = values.name ?? values.full_name ?? values.display_name;
+  const name = values.name ?? values.full_name ?? values.display_name ?? `${values.first_name || ''} ${values.last_name || ''}`.trim();
   return typeof name === "string" ? name : null;
 }
 
