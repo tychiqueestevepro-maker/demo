@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
 
     // 3. Apply coupon to the Stripe subscription
     await stripe.subscriptions.update(sub.stripeSubscriptionId, {
-      coupon: couponId,
-    } as any);
+      discounts: [{ coupon: couponId }],
+    });
 
     // 4. Record that the user has consumed their discount
     await prisma.subscription.update({
