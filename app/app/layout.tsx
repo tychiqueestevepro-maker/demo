@@ -1,6 +1,7 @@
 import { AppSidebar } from "@/components/product-components";
 import { AuthProvider } from "@/components/auth-provider";
 import { SubscriptionBanner } from "@/components/subscription-banner";
+import { SubscriptionGate } from "@/components/subscription-gate";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
@@ -60,7 +61,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="relative z-10 min-w-0 flex-1">
           <main className="w-full px-4 py-8 md:px-6 xl:px-8 2xl:px-10">
             <SubscriptionBanner />
-            {children}
+            <SubscriptionGate>
+              {children}
+            </SubscriptionGate>
           </main>
         </div>
       </div>

@@ -35,7 +35,7 @@ export async function requireUser(request: NextRequest): Promise<AuthContext> {
       throw new ApiError(401, "Invalid Supabase session.");
     }
 
-    await prisma.user.upsert({
+    const dbUser = await prisma.user.upsert({
       where: { id: user.id },
       update: {
         email: user.email,
@@ -54,7 +54,20 @@ export async function requireUser(request: NextRequest): Promise<AuthContext> {
           },
         },
       },
+      include: {
+        subscription: true,
+      }
     });
+
+    if (!dbUser.subscription) {
+      await prisma.subscription.create({
+        data: {
+          userId: user.id,
+          status: "trialing",
+          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        }
+      });
+    }
 
     return { userId: user.id };
   }
@@ -135,7 +148,7 @@ export async function getServerUser(): Promise<AuthContext & { email?: string; n
       const avatarUrl = getSupabaseAvatarUrl(user.user_metadata);
       
       try {
-        await prisma.user.upsert({
+        const dbUser = await prisma.user.upsert({
           where: { id: user.id },
           update: {
             email: user.email,
@@ -154,7 +167,20 @@ export async function getServerUser(): Promise<AuthContext & { email?: string; n
               },
             },
           },
+          include: {
+            subscription: true,
+          }
         });
+
+        if (!dbUser.subscription) {
+          await prisma.subscription.create({
+            data: {
+              userId: user.id,
+              status: "trialing",
+              trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+            }
+          });
+        }
       } catch (error) {
         console.error("Failed to sync user to database:", error);
       }
