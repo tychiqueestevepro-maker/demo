@@ -11,28 +11,28 @@ import { prisma } from "@/lib/db";
 export default async function DashboardPage() {
   const { userId } = await getServerUser();
 
-  const repliesCount = await prisma.followUp.count({
-    where: { userId, status: "REPLIED" },
-  });
-
-  const dueFollowUps = await prisma.followUp.findMany({
-    where: { userId, status: "DUE" },
-    orderBy: { dueAt: "asc" },
-    include: { target: true, campaign: true },
-    take: 10,
-  });
-
-  const targetsCount = await prisma.campaignTarget.count({
-    where: { userId },
-  });
-
-  const activeCampaignsData = await prisma.campaign.findMany({
-    where: { userId, status: { in: ["ACTIVE", "WAITING"] } },
-    include: {
-      targets: true,
-      followUps: true,
-    },
-  });
+  // Run all queries in parallel instead of sequentially
+  const [repliesCount, dueFollowUps, targetsCount, activeCampaignsData] = await Promise.all([
+    prisma.followUp.count({
+      where: { userId, status: "REPLIED" },
+    }),
+    prisma.followUp.findMany({
+      where: { userId, status: "DUE" },
+      orderBy: { dueAt: "asc" },
+      include: { target: true, campaign: true },
+      take: 10,
+    }),
+    prisma.campaignTarget.count({
+      where: { userId },
+    }),
+    prisma.campaign.findMany({
+      where: { userId, status: { in: ["ACTIVE", "WAITING"] } },
+      include: {
+        targets: { select: { status: true } },
+        followUps: { select: { status: true } },
+      },
+    }),
+  ]);
 
   const activeCampaigns = activeCampaignsData.map((campaign) => {
     const totalTargets = campaign.targets.length;

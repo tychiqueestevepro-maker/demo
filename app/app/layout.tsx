@@ -7,17 +7,17 @@ import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  let userId;
+  let userAuth;
   try {
-    const userAuth = await getServerUser();
-    userId = userAuth.userId;
+    userAuth = await getServerUser();
   } catch (error) {
     redirect("/login");
   }
 
-  const userRecord = await prisma.user.findUnique({ where: { id: userId } });
-  
-  const userName = userRecord?.name || userRecord?.email || "Verytis User";
+  const userId = userAuth.userId;
+
+  // Use user info from auth context directly (no extra DB call)
+  const userName = userAuth.name || userAuth.email || "Verytis User";
   const initials = userName
     .split(" ")
     .filter(Boolean)
@@ -28,21 +28,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const user = {
     name: userName,
-    email: userRecord?.email,
+    email: userAuth.email,
     initials,
   };
 
+  // Fetch notifications in parallel (not blocking render)
   const dueFollowUps = await prisma.followUp.findMany({
     where: {
       userId,
       status: { in: ["PENDING", "DUE"] },
       dueAt: { lte: new Date() },
     },
-    include: {
-      target: true,
-      campaign: true,
+    select: {
+      id: true,
+      dueAt: true,
+      target: { select: { name: true } },
+      campaign: { select: { name: true } },
     },
     orderBy: { dueAt: "asc" },
+    take: 20,
   });
 
   const notifications = dueFollowUps.map((fu) => ({

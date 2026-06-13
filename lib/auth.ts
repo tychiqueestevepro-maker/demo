@@ -35,38 +35,32 @@ export async function requireUser(request: NextRequest): Promise<AuthContext> {
       throw new ApiError(401, "Invalid Supabase session.");
     }
 
-    const dbUser = await prisma.user.upsert({
+    // Fast path: just check if user exists (no upsert on every request)
+    const existingUser = await prisma.user.findUnique({
       where: { id: user.id },
-      update: {
-        email: user.email,
-        name: getSupabaseDisplayName(user.user_metadata),
-        avatarUrl: getSupabaseAvatarUrl(user.user_metadata),
-      },
-      create: {
-        id: user.id,
-        email: user.email,
-        name: getSupabaseDisplayName(user.user_metadata),
-        avatarUrl: getSupabaseAvatarUrl(user.user_metadata),
-        subscription: {
-          create: {
-            status: "trialing",
-            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-          },
-        },
-      },
-      include: {
-        subscription: true,
-      }
+      select: { id: true },
     });
 
-    if (!dbUser.subscription) {
-      await prisma.subscription.create({
-        data: {
-          userId: user.id,
-          status: "trialing",
-          trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        }
-      });
+    // Only create if user doesn't exist yet (first API call after signup)
+    if (!existingUser) {
+      try {
+        await prisma.user.create({
+          data: {
+            id: user.id,
+            email: user.email,
+            name: getSupabaseDisplayName(user.user_metadata),
+            avatarUrl: getSupabaseAvatarUrl(user.user_metadata),
+            subscription: {
+              create: {
+                status: "trialing",
+                trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+              },
+            },
+          },
+        });
+      } catch {
+        // User was created concurrently, ignore
+      }
     }
 
     return { userId: user.id };
@@ -143,53 +137,42 @@ export async function getServerUser(): Promise<AuthContext & { email?: string; n
     } = await supabase.auth.getUser(accessToken);
 
     if (user?.id) {
-      // Upsert the user to ensure they exist in the DB (for new signups)
       const name = getSupabaseDisplayName(user.user_metadata);
       const avatarUrl = getSupabaseAvatarUrl(user.user_metadata);
-      
-      try {
-        const dbUser = await prisma.user.upsert({
-          where: { id: user.id },
-          update: {
-            email: user.email,
-            name: name,
-            avatarUrl: avatarUrl,
-          },
-          create: {
-            id: user.id,
-            email: user.email || "",
-            name: name,
-            avatarUrl: avatarUrl,
-            subscription: {
-              create: {
-                status: "trialing",
-                trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+
+      // Fast path: just check if the user exists (no upsert on every request)
+      const existingUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { id: true },
+      });
+
+      // Only upsert if the user doesn't exist yet (first visit after signup)
+      if (!existingUser) {
+        try {
+          await prisma.user.create({
+            data: {
+              id: user.id,
+              email: user.email || "",
+              name: name,
+              avatarUrl: avatarUrl,
+              subscription: {
+                create: {
+                  status: "trialing",
+                  trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+                },
               },
             },
-          },
-          include: {
-            subscription: true,
-          }
-        });
-
-        if (!dbUser.subscription) {
-          await prisma.subscription.create({
-            data: {
-              userId: user.id,
-              status: "trialing",
-              trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-            }
           });
+        } catch {
+          // User was created concurrently, ignore
         }
-      } catch (error) {
-        console.error("Failed to sync user to database:", error);
       }
 
-      return { 
+      return {
         userId: user.id,
         email: user.email,
         name: name || undefined,
-        avatarUrl: avatarUrl || undefined
+        avatarUrl: avatarUrl || undefined,
       };
     }
   }
