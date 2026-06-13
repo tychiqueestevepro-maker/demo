@@ -231,6 +231,9 @@ function SecuritySettings() {
 
 function BillingSettings() {
   const [portalLoading, setPortalLoading] = React.useState(false);
+  const [invoices, setInvoices] = React.useState<{ id: string; name: string; createdAt: string }[]>([]);
+  const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
+  const [subscribeLoading, setSubscribeLoading] = React.useState(false);
   const [subscription, setSubscription] = React.useState<{
     plan: string;
     status: string;
