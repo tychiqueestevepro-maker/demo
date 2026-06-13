@@ -557,7 +557,14 @@ function BillingSettings() {
                   onClick={async () => {
                     setCancelLoading(true);
                     try {
-                      const res = await fetch("/api/subscription/cancel", { method: "POST" });
+                      const { createClient } = await import("@supabase/supabase-js");
+                      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+                      const { data: { session } } = await supabase.auth.getSession();
+
+                      const res = await fetch("/api/subscription/cancel", { 
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${session?.access_token}` }
+                      });
                       if (!res.ok) {
                         const data = await res.json();
                         alert(data.error || "Failed to cancel subscription.");
