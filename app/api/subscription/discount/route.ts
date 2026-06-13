@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Ensure "30_OFF" coupon exists on Stripe, or create it
-    const couponId = "30_OFF";
+    const couponId = "30_OFF_ONCE";
     try {
       await stripe.coupons.retrieve(couponId);
     } catch {
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       await stripe.coupons.create({
         id: couponId,
         percent_off: 30,
-        duration: "forever",
+        duration: "once",
       });
     }
 

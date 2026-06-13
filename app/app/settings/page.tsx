@@ -525,16 +525,16 @@ function BillingSettings() {
           {cancelStep === "offer" ? (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
               <p className="text-sm font-semibold text-emerald-700">Before you unsubscribe</p>
-              <p className="mt-2 text-xl font-bold text-[#120b2f]">Keep Solo with 30% off</p>
+              <p className="mt-2 text-xl font-bold text-[#120b2f]">Keep Solo with 30% off for 1 month</p>
               <p className="mt-1 text-sm text-[#120b2f]/60">
-                Your monthly price becomes <strong>$13.99</strong> instead of <strong>$19.99</strong>.
+                Your next month will be <strong>$13.99</strong> instead of <strong>$19.99</strong>.
               </p>
               <div className="mt-4 flex flex-wrap justify-end gap-2">
                 <Button type="button" variant="secondary" onClick={() => setCancelStep("confirm")} disabled={discountLoading}>
                   Continue cancellation
                 </Button>
                 <Button type="button" variant="accent" onClick={handleApplyDiscount} disabled={discountLoading}>
-                  {discountLoading ? "Applying..." : "Keep 30% discount"}
+                  {discountLoading ? "Applying..." : "Keep 30% discount for 1 month"}
                 </Button>
               </div>
             </div>
