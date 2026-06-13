@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
 import { activateSubscription, cancelSubscription, updateSubscriptionPeriod } from "@/lib/services/subscription-service";
 import { prisma } from "@/lib/db";
+import { generateInvoicePdf, uploadInvoiceToSupabase } from "@/lib/services/invoice-service";
 
 export async function POST(request: NextRequest) {
   if (!stripe) {
@@ -57,18 +58,76 @@ export async function POST(request: NextRequest) {
         const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
         if (!subscriptionId) break;
 
-        // Find user by subscription
-        const subRecord = await prisma.subscription.findFirst({
+        // Find user by subscription ID, customer ID, or email
+        let subRecord = await prisma.subscription.findFirst({
           where: { stripeSubscriptionId: subscriptionId },
           include: { user: { select: { id: true, email: true, name: true } } },
         });
 
+        if (!subRecord) {
+          // Fallback 1: Try by customer ID
+          subRecord = await prisma.subscription.findFirst({
+            where: { stripeCustomerId: invoice.customer as string },
+            include: { user: { select: { id: true, email: true, name: true } } },
+          });
+        }
+
+        if (!subRecord) {
+          // Fallback 2: Try by email
+          const email = invoice.customer_email || invoice.customer_details?.email;
+          if (email) {
+            subRecord = await prisma.subscription.findFirst({
+              where: { user: { email } },
+              include: { user: { select: { id: true, email: true, name: true } } },
+            });
+          }
+        }
+
         if (!subRecord) break;
+
+        // If the customer/subscription IDs are missing in our DB, set them now
+        if (!subRecord.stripeCustomerId || !subRecord.stripeSubscriptionId) {
+          await prisma.subscription.update({
+            where: { userId: subRecord.userId },
+            data: {
+              status: "active",
+              stripeCustomerId: invoice.customer as string,
+              stripeSubscriptionId: subscriptionId,
+            },
+          });
+        }
 
         // Update period end
         if (invoice.lines?.data?.[0]?.period?.end) {
           const periodEnd = new Date(invoice.lines.data[0].period.end * 1000);
           await updateSubscriptionPeriod(subRecord.userId, periodEnd);
+        }
+
+        // Generate and upload PDF invoice
+        try {
+          const amount = (invoice.amount_paid ?? 0) / 100;
+          const currency = (invoice.currency ?? "usd").toUpperCase();
+          const periodStart = invoice.lines?.data?.[0]?.period?.start
+            ? new Date(invoice.lines.data[0].period.start * 1000).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+            : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+          const periodEndStr = invoice.lines?.data?.[0]?.period?.end
+            ? new Date(invoice.lines.data[0].period.end * 1000).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+            : new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+          const invoicePdf = generateInvoicePdf({
+            invoiceNumber: invoice.number ?? invoice.id,
+            date: new Date((invoice.status_transitions?.paid_at ?? Date.now() / 1000) * 1000).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+            periodStart,
+            periodEnd: periodEndStr,
+            customerName: subRecord.user.name ?? "Customer",
+            customerEmail: subRecord.user.email,
+            amount,
+            currency,
+          });
+
+          await uploadInvoiceToSupabase(subRecord.userId, invoicePdf, invoice.id);
+        } catch (pdfErr) {
+          console.error("Failed to generate/upload invoice PDF:", pdfErr);
         }
         break;
       }
