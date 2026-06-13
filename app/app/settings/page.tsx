@@ -235,6 +235,7 @@ function BillingSettings() {
   const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
   const [subscribeLoading, setSubscribeLoading] = React.useState(false);
   const [discountLoading, setDiscountLoading] = React.useState(false);
+  const [cancelLoading, setCancelLoading] = React.useState(false);
   const [subscription, setSubscription] = React.useState<{
     plan: string;
     status: string;
@@ -521,8 +522,28 @@ function BillingSettings() {
                 <Button type="button" variant="secondary" onClick={() => setCancelStep("idle")}>
                   Keep subscription
                 </Button>
-                <Button type="button" className="border border-rose-600 bg-rose-600 text-white hover:bg-rose-700" onClick={() => setCancelStep("cancelled")}>
-                  Unsubscribe
+                <Button
+                  type="button"
+                  className="border border-rose-600 bg-rose-600 text-white hover:bg-rose-700"
+                  disabled={cancelLoading}
+                  onClick={async () => {
+                    setCancelLoading(true);
+                    try {
+                      const res = await fetch("/api/subscription/cancel", { method: "POST" });
+                      if (!res.ok) {
+                        const data = await res.json();
+                        alert(data.error || "Failed to cancel subscription.");
+                      } else {
+                        setCancelStep("cancelled");
+                      }
+                    } catch {
+                      alert("Network error. Please try again.");
+                    } finally {
+                      setCancelLoading(false);
+                    }
+                  }}
+                >
+                  {cancelLoading ? "Cancelling..." : "Unsubscribe"}
                 </Button>
               </div>
             </div>
