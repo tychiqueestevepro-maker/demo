@@ -12,9 +12,14 @@ export default async function FollowUpsPage() {
     redirect("/login");
   }
 
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+
   const dbFollowUps = await prisma.followUp.findMany({
     where: { 
       userId,
+      status: { in: ["PENDING", "DUE"] },
+      dueAt: { lte: endOfToday },
       target: {
         status: {
           notIn: ["COMPLETED", "INTERESTED", "STOPPED", "NOT_INTERESTED"]
@@ -36,6 +41,9 @@ export default async function FollowUpsPage() {
     where: { userId },
   });
 
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
   const followUps = dbFollowUps.map(fu => ({
     id: fu.id,
     campaignId: fu.campaignId,
@@ -48,7 +56,7 @@ export default async function FollowUpsPage() {
     priority: fu.priority === "HIGH" || fu.priority === "URGENT" ? "High" : "Medium",
     status: fu.status,
     dueDate: fu.dueAt ? new Date(fu.dueAt).toLocaleDateString() : "Today",
-    missingContext: false, // Calculate if needed
+    isOverdue: fu.dueAt ? new Date(fu.dueAt).getTime() < todayStart.getTime() : false,
     messagePreview: fu.messageBody,
   }));
 

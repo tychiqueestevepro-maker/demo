@@ -25,13 +25,23 @@ export function personalizeMessage(template: string, target: MessageTarget) {
   };
 
   const replaceKey = (match: string, key: string) => {
-    const value = values[key] ?? values[key.toLowerCase()];
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+    let mappedKey = normalized;
+    
+    if (normalized.includes("firstname")) mappedKey = "firstName";
+    else if (normalized.includes("fullname")) mappedKey = "fullName";
+    else if (normalized.includes("candidate") || normalized.includes("prospect") || normalized.includes("target")) mappedKey = "firstName";
+    else if (normalized.includes("company")) mappedKey = "company";
+    else if (normalized.includes("role") || normalized.includes("title")) mappedKey = "role";
+    else if (normalized.includes("name")) mappedKey = "name";
+
+    const value = values[mappedKey] ?? values[key] ?? values[key.toLowerCase()];
     return value ?? match;
   };
 
   return template
-    .replace(/\{\{\s*([\w.-]+)\s*\}\}/g, replaceKey)
-    .replace(/\{\s*([\w.-]+)\s*\}/g, replaceKey)
-    .replace(/\(\s*([\w.-]+)\s*\)/g, replaceKey)
-    .replace(/\[\s*([\w.-]+)\s*\]/g, replaceKey);
+    .replace(/\{\{\s*([^}]+?)\s*\}\}/g, replaceKey)
+    .replace(/\{\s*([^}]+?)\s*\}/g, replaceKey)
+    .replace(/\(\s*([^)]+?)\s*\)/g, replaceKey)
+    .replace(/\[\s*([^\]]+?)\s*\]/g, replaceKey);
 }

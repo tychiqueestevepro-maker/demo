@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { Sparkles, Mail, Phone, CheckCircle2, XCircle } from "lucide-react";
 
 import {
-  AISummaryCard,
   ConversationContext,
+  CopyMessageButton,
   MessagePreviewModal,
   PriorityBadge,
   TargetActionButton,
@@ -62,7 +62,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
       notes: targetRecord.notes,
     }),
   }));
-  const currentStep = targetRecord.currentStage?.name || "Initial message";
+  const currentStep = targetRecord.currentStage?.name || playbook?.stages?.[0]?.name || "Initial message";
   const nextAction =
     targetRecord.aiRecommendedAction ||
     (targetRecord.followUpCount === 0 ? "Send initial message" : "Review next follow-up");
@@ -123,7 +123,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
   const hasBothParties = events.some(e => e.title.toLowerCase().includes("repl") || e.title.toLowerCase().includes("receiv"));
 
   const nextMessage = personalizeMessage(
-    targetRecord.currentStage?.messageBody || "Hi {{firstName}}, quick note about {{company}}.",
+    targetRecord.currentStage?.messageBody || playbook?.stages?.[0]?.messageBody || "Hi {{firstName}}, quick note about {{company}}.",
     {
       name: targetRecord.name,
       company: targetRecord.company,
@@ -153,7 +153,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
       <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
         <div id="follow-up" className="min-w-0 scroll-mt-6">
           <Card className="h-full">
-            <CardHeader><CardTitle>{targetRecord.status === "COMPLETED" || targetRecord.status === "INTERESTED" || targetRecord.status === "STOPPED" || targetRecord.status === "NOT_INTERESTED" ? "Final Result" : "Action to do"}</CardTitle></CardHeader>
+            <CardHeader><CardTitle>{targetRecord.status === "COMPLETED" || targetRecord.status === "INTERESTED" || targetRecord.status === "STOPPED" || targetRecord.status === "NOT_INTERESTED" ? "Final Result" : target.currentStep}</CardTitle></CardHeader>
             <CardContent>
               {targetRecord.status === "COMPLETED" || targetRecord.status === "INTERESTED" ? (
                 <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-5 text-emerald-700 font-medium">
@@ -176,7 +176,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
                     {nextMessage}
                   </div>
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <MessagePreviewModal label="Copy next" message={nextMessage} />
+                    <CopyMessageButton label="Copy next" message={nextMessage} />
                     <TargetActionButton targetId={target.id} endpoint="mark-sent" label="Next step" />
                     <TargetActionButton targetId={target.id} endpoint="mark-completed" label="Prospect validated" tone="emerald" />
                     <TargetActionButton targetId={target.id} endpoint="stop" label="Rejected" tone="rose" />
@@ -226,20 +226,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
               } />
             </CardContent>
           </Card>
-          <AISummaryCard title="AI target summary">
-            {hasConversationStarted ? (
-              <p className="break-words text-sm leading-relaxed text-neutral-700">
-                Based on the campaign timeline, we are currently at the <strong>{target.currentStep}</strong> stage.
-                {" "}{target.name} from {target.company} is in this campaign because {target.summary.why.toLowerCase()}.
-                {" "}Currently, {target.summary.happened.toLowerCase()}, but {target.summary.blocker.toLowerCase()}.
-                {" "}The recommended next action is to <strong>{target.summary.next.toLowerCase()}</strong>.
-              </p>
-            ) : (
-              <p className="break-words text-sm text-neutral-500 italic">
-                Summary will be generated once the conversation starts.
-              </p>
-            )}
-          </AISummaryCard>
+
         </div>
       </section>
 
@@ -249,15 +236,6 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
             <h2 className="text-xl font-semibold tracking-tight text-[#120b2f]">Follow-up Sequence</h2>
             <p className="mt-1 text-sm text-neutral-500">Current steps and actions planned for this prospect.</p>
           </div>
-          <Button 
-            variant="secondary" 
-            className="w-full gap-2 border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 sm:w-auto disabled:opacity-50 disabled:hover:bg-violet-50"
-            disabled={!hasBothParties}
-            title={!hasBothParties ? "Requires conversation history from both parties" : "Update sequence with AI"}
-          >
-            <Sparkles className="h-4 w-4" />
-            Update sequence with AI
-          </Button>
         </div>
         <TargetSequence stages={stages} currentStep={target.currentStep} />
       </section>

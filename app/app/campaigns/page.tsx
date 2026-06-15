@@ -10,6 +10,9 @@ import { prisma } from "@/lib/db";
 export default async function CampaignsPage() {
   const { userId } = await getServerUser();
 
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+
   const campaignsData = await prisma.campaign.findMany({
     where: { userId },
     include: {
@@ -25,7 +28,10 @@ export default async function CampaignsPage() {
     const completed = campaign.targets.filter((t) => t.status === "COMPLETED" || t.status === "INTERESTED").length;
     const replies = campaign.targets.filter((t) => t.status === "REPLIED").length;
     const blocked = campaign.targets.filter((t) => t.status === "STOPPED" || t.status === "NOT_INTERESTED").length;
-    const followUpsDue = campaign.followUps.filter((f) => f.status === "DUE").length;
+    const followUpsDue = campaign.followUps.filter((f) => 
+      (f.status === "DUE" || f.status === "PENDING") && 
+      (f.dueAt ? new Date(f.dueAt).getTime() <= endOfToday.getTime() : false)
+    ).length;
     const progress = totalTargets > 0 ? Math.round(((completed + blocked) / totalTargets) * 100) : 0;
 
     return {

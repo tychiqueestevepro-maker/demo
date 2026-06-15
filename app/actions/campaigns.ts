@@ -16,6 +16,8 @@ export async function createCampaignAction(data: {
     company: string;
     role: string;
     email: string;
+    phone?: string;
+    profileUrl?: string;
     note?: string;
   }>;
   playbookStages: Array<{
@@ -45,6 +47,8 @@ export async function createCampaignAction(data: {
           company: t.company,
           role: t.role,
           email: t.email,
+          phone: t.phone,
+          profileUrl: t.profileUrl,
           status: "NOT_CONTACTED",
           priority: "MEDIUM",
           notes: t.note,
@@ -82,4 +86,12 @@ export async function createCampaignAction(data: {
 
   revalidatePath("/app/campaigns");
   return campaign;
+}
+
+import { generatePlaybook } from "@/lib/services/ai-service";
+import type { GeneratePlaybookInput } from "@/lib/validators";
+
+export async function generatePlaybookAction(input: GeneratePlaybookInput) {
+  const user = await getServerUser(); // Ensure user is logged in
+  return generatePlaybook({ ...input, senderName: user.name });
 }

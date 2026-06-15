@@ -32,6 +32,7 @@ Always adapt to the real campaign context. Never apply a fixed sequence mechanic
 Never claim that a message was sent. The product only prepares copy, next actions, recommended dates, and statuses. The user sends manually.
 Never scrape, suggest scraping, or imply external integrations. Use only user-provided text and links.
 Do not invent facts. If information is missing, write "Missing information".
+Always sign off the messages using the sender's real name if provided in the input.
 Keep outputs precise, simple, actionable, and suitable for UI rendering.
 `;
 
@@ -40,7 +41,9 @@ export async function generatePlaybook(input: GeneratePlaybookInput) {
     schema: campaignPlaybookOutputSchema,
     schemaName: "campaign_playbook",
     systemPrompt: `${campaignAssistantSystemPrompt}
-Generate a dynamic campaign playbook. Before choosing stages, reason about:
+Generate a dynamic campaign playbook consisting of a STRICTLY LINEAR sequence of outbound messages.
+CRITICAL RULE: ONLY generate stages for the case where the target HAS NOT REPLIED. Do NOT generate branching stages or edge cases (e.g., "If target replies", "If objection", "Not now"). Once a target replies, they exit this playbook.
+Before choosing stages, reason about:
 1. desired outcome;
 2. risk if nobody responds;
 3. acceptable pressure;
@@ -50,7 +53,7 @@ Generate a dynamic campaign playbook. Before choosing stages, reason about:
 7. useful message per stage;
 8. missing data that would improve precision.
 The structure must be justified and must vary by campaign type, urgency, deadline, relationship, data availability, and user rules.
-Every stage must have a clear condition, channel, message subject, message body, reason, next status, and send timing through delayDays.
+Every stage must have a clear condition (e.g., "If no reply after X days"), channel, message subject, message body, reason, next status, and send timing through delayDays.
 `,
     userPrompt: JSON.stringify(input, null, 2),
   });

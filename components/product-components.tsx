@@ -10,6 +10,7 @@ import { deleteCampaignAction, pauseCampaignAction } from "@/app/actions/campaig
 import { searchWorkspace } from "@/app/actions/search";
 import { addDataSource, deleteDataSource } from "@/app/actions/data-directory";
 import { markFollowUpCompleted, snoozeFollowUp } from "@/app/actions/follow-ups";
+import { addConversationMessageAction } from "@/app/actions/activity";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -610,7 +611,7 @@ function toggleChoice(list: string[], item: string) {
   return list.includes(item) ? list.filter((value) => value !== item) : [...list, item];
 }
 
-type NotificationType = { id: string | number; title: string; target: string; campaign: string; time: string };
+type NotificationType = { id: string | number; title: string; target: string; campaign: string; time: string; url?: string };
 
 export function AppSidebar({ 
   user, 
@@ -717,25 +718,42 @@ export function AppSidebar({
               <span className="text-xs font-bold uppercase tracking-wider text-violet-700">Notifications</span>
               <button onClick={() => setNotificationsOpen(false)} className="text-neutral-400 hover:text-neutral-900"><X className="h-4 w-4" /></button>
             </div>
-            <div className="space-y-2">
+            <div className="max-h-72 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
               <SubscriptionExpiredNotification />
               {notifications.length === 0 ? (
                 <p className="py-3 text-center text-sm text-[#120b2f]/50">No pending follow-ups.</p>
               ) : (
-                notifications.map((notif) => (
-                  <button 
-                    key={notif.id} 
-                    onClick={() => setNotifications(notifications.filter(n => n.id !== notif.id))}
-                    className="block w-full text-left rounded-xl border border-violet-100 bg-violet-50/50 p-2.5 text-sm transition hover:bg-violet-100"
-                  >
-                    <p className="font-semibold text-rose-600 text-xs">{notif.title}</p>
-                    <p className="mt-0.5 font-medium">{notif.target}</p>
-                    <div className="mt-1 flex items-center justify-between text-xs text-[#120b2f]/50">
-                      <span>{notif.campaign}</span>
-                      <span>{notif.time}</span>
-                    </div>
-                  </button>
-                ))
+                notifications.map((notif) => {
+                  const content = (
+                    <>
+                      <p className="font-semibold text-rose-600 text-xs">{notif.title}</p>
+                      <p className="mt-0.5 font-medium">{notif.target}</p>
+                      <div className="mt-1 flex items-center justify-between text-xs text-[#120b2f]/50">
+                        <span>{notif.campaign}</span>
+                        <span>{notif.time}</span>
+                      </div>
+                    </>
+                  );
+
+                  return notif.url ? (
+                    <Link
+                      key={notif.id}
+                      href={notif.url}
+                      onClick={() => setNotificationsOpen(false)}
+                      className="block w-full text-left rounded-xl border border-violet-100 bg-violet-50/50 p-2.5 text-sm transition hover:bg-violet-100"
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <button 
+                      key={notif.id} 
+                      onClick={() => setNotifications(notifications.filter(n => n.id !== notif.id))}
+                      className="block w-full text-left rounded-xl border border-violet-100 bg-violet-50/50 p-2.5 text-sm transition hover:bg-violet-100"
+                    >
+                      {content}
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
@@ -1034,7 +1052,7 @@ function campaignMatchesFilter(campaign: Campaign, filter: string) {
   return campaign.status === filter || campaign.type === filter;
 }
 
-function campaignChannelValues(channel: string) {
+export function campaignChannelValues(channel: string) {
   return channel
     .split("+")
     .map((item) => item.trim())
@@ -1226,17 +1244,17 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
   return (
     <article className="overflow-visible rounded-lg border border-violet-500/15 bg-white shadow-sm transition hover:border-violet-500/25 hover:shadow-xl hover:shadow-violet-950/8">
       <div className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link href={`/app/campaigns/${campaign.id}`} className="font-semibold text-neutral-950 hover:text-violet-700">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <Link href={`/app/campaigns/${campaign.id}`} className="truncate font-semibold text-neutral-950 hover:text-violet-700">
                 {campaign.name}
               </Link>
-              <Badge tone="violet" className="rounded-md">{campaign.type}</Badge>
+              <Badge tone="violet" className="shrink-0 rounded-md">{campaign.type}</Badge>
             </div>
             <p className="mt-2 line-clamp-1 max-w-2xl text-sm text-neutral-500">{campaign.goal}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <CampaignStatusBadge status={visibleStatus} />
             <div className="relative">
               <button
@@ -1401,7 +1419,8 @@ export function CampaignTable({ rows = campaigns }: { rows?: Campaign[] }) {
   );
 }
 
-type TargetTableRow = TargetRecord & {
+type TargetTableRow = Omit<TargetRecord, "status"> & {
+  status: string;
   step?: number;
   message?: string;
 };
@@ -1549,7 +1568,7 @@ export function AISummaryCard({ title = "AI Campaign Summary", children }: { tit
   );
 }
 
-export function PlaybookStageCard({ stage }: { stage: PlaybookStage }) {
+export function PlaybookStageCard({ stage, index, onEdit }: { stage: PlaybookStage; index?: number; onEdit?: () => void }) {
   return (
     <Card>
       <CardContent className="pt-5">
@@ -1558,12 +1577,22 @@ export function PlaybookStageCard({ stage }: { stage: PlaybookStage }) {
             <p className="text-sm font-semibold text-neutral-950">{stage.title}</p>
             <p className="text-sm text-neutral-500">{stage.delay}</p>
           </div>
-          <Badge tone={stage.status === "Ready" ? "emerald" : stage.status === "Editable" ? "violet" : "amber"}>{stage.status}</Badge>
+          <Badge tone="violet">Step {index !== undefined ? index + 1 : 1}</Badge>
         </div>
         <p className="mt-4 rounded-md bg-neutral-50 p-3 text-sm leading-6 text-neutral-600">{stage.message}</p>
-        <div className="mt-4 flex items-center gap-2 text-xs font-medium text-neutral-500">
-          <Flag className="h-3.5 w-3.5" />
-          {stage.condition}
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="rounded-lg border border-violet-500/15 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-50"
+            >
+              Edit
+            </button>
+          )}
+          <div className="flex items-center gap-2 text-xs font-medium text-neutral-500">
+            <Flag className="h-3.5 w-3.5" />
+            {stage.condition}
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -1606,14 +1635,16 @@ export function TargetSequence({ stages, currentStep }: { stages: PlaybookStage[
                 completed && "bg-emerald-600 text-white",
                 !active && !completed && "bg-violet-50 text-violet-700",
               )}>
-                {completed ? <Check className="h-4 w-4" /> : index + 1}
+                {completed ? <Check className="h-4 w-4" /> : index}
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold text-neutral-950">{stage.title}</p>
                   <Badge tone={active ? "violet" : completed ? "emerald" : "neutral"}>{active ? "Current" : completed ? "Done" : stage.delay}</Badge>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-neutral-600">{stage.condition}</p>
+                {stage.condition && stage.condition !== "N/A" && (
+                  <p className="mt-2 text-sm leading-6 text-neutral-600">{stage.condition}</p>
+                )}
                 {active ? (
                   <p className="mt-3 rounded-xl border border-violet-500/10 bg-white p-3 text-sm leading-6 text-neutral-700">{stage.message}</p>
                 ) : null}
@@ -1627,13 +1658,17 @@ export function TargetSequence({ stages, currentStep }: { stages: PlaybookStage[
 }
 
 export function ConversationContext({ target, events }: { target: TargetRecord; events: TimelineEvent[] }) {
-  const initialMessages: { id: string, speaker: "you" | "prospect", author: string, text: string, time: string }[] = events.map((event) => ({
-    id: event.id,
-    speaker: "you",
-    author: "You",
-    text: event.description,
-    time: event.time,
-  }));
+  const [isPending, startTransition] = React.useTransition();
+  const initialMessages: { id: string, speaker: "you" | "prospect", author: string, text: string, time: string }[] = events.map((event) => {
+    const isProspect = event.title.toLowerCase().includes("repl") || event.title.toLowerCase().includes("receiv") || event.title.toLowerCase().includes("inbound");
+    return {
+      id: event.id,
+      speaker: isProspect ? "prospect" : "you",
+      author: isProspect ? target.name : "You",
+      text: event.description,
+      time: event.time,
+    };
+  });
   const [messages, setMessages] = React.useState(initialMessages);
   const [draft, setDraft] = React.useState("");
   const [speaker, setSpeaker] = React.useState<"you" | "prospect">("you");
@@ -1717,6 +1752,7 @@ export function ConversationContext({ target, events }: { target: TargetRecord; 
               type="button"
               size="sm"
               variant="accent"
+              disabled={isPending}
               onClick={() => {
                 const value = draft.trim();
                 if (!value) return;
@@ -1731,10 +1767,13 @@ export function ConversationContext({ target, events }: { target: TargetRecord; 
                   },
                 ]);
                 setDraft("");
+                startTransition(() => {
+                  addConversationMessageAction(target.campaignId, target.id, value, speaker, messageTime);
+                });
               }}
             >
-              <MessageCircle className="h-4 w-4" />
-              Add message
+              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+              {isPending ? "Saving..." : "Add message"}
             </Button>
           </div>
         </div>
@@ -1785,10 +1824,10 @@ type FollowUpType = {
   status: string;
   due: string;
   dueDate: string;
-  missingContext: boolean;
   messagePreview: string;
   message: string;
   step: string;
+  isOverdue?: boolean;
 };
 type FollowUpCampaignType = { id: string; name: string; status: string; type: string; goal: string; channel: string; followUpsDue: number };
 type FollowUpTargetType = { id: string; campaignId: string; name: string; company: string; role: string; email: string; status: string; priority: string; nextAction: string };
@@ -1812,7 +1851,11 @@ export function FollowUpCampaignQueue({
   }
 
   const campaignFollowUps = [...items.filter((item) => item.campaignId === selectedCampaign.id)]
-    .sort((a, b) => followUpQueueScore(a) - followUpQueueScore(b));
+    .sort((a, b) => {
+      if (a.isOverdue && !b.isOverdue) return -1;
+      if (!a.isOverdue && b.isOverdue) return 1;
+      return followUpQueueScore(a) - followUpQueueScore(b);
+    });
   const campaignTargets = initialTargets.filter((target) => target.campaignId === selectedCampaign.id);
   const nextItem = campaignFollowUps[0];
 
@@ -1855,13 +1898,7 @@ export function FollowUpCampaignQueue({
           </div>
         </CardHeader>
         <CardContent className="space-y-3 pt-4">
-          {nextItem ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-amber-800/70">Next best action</p>
-              <p className="mt-2 font-semibold text-neutral-950">{nextItem.target}</p>
-              <p className="mt-1 text-sm leading-6 text-neutral-600">{nextItem.reason}</p>
-            </div>
-          ) : null}
+
 
           {campaignFollowUps.map((item) => {
             const target = initialTargets.find((targetItem) => targetItem.id === item.targetId);
@@ -1874,13 +1911,14 @@ export function FollowUpCampaignQueue({
                 className="block rounded-2xl border border-violet-500/10 bg-white p-4 transition hover:border-violet-500/25 hover:bg-violet-50/50 hover:shadow-lg hover:shadow-violet-950/5"
               >
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <PriorityBadge priority={item.priority} />
                   <Badge>{item.dueDate}</Badge>
                   <Badge tone="violet">{item.step}</Badge>
                 </div>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-[#120b2f]">{item.target}</p>
+                    <p className="font-semibold text-[#120b2f]">
+                      {item.isOverdue ? "🚨 " : ""}{item.target}
+                    </p>
                     <p className="mt-1 text-sm text-[#120b2f]/55">{target ? `${target.role} at ${target.company}` : selectedCampaign.name}</p>
                     <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#120b2f]/70">{item.reason}</p>
                   </div>
@@ -1902,7 +1940,7 @@ export function FollowUpCampaignQueue({
   );
 }
 
-export function CopyMessageButton({ message }: { message: string }) {
+export function CopyMessageButton({ message, label = "Copy" }: { message: string; label?: string }) {
   const [copied, setCopied] = React.useState(false);
 
   return (
@@ -1916,7 +1954,7 @@ export function CopyMessageButton({ message }: { message: string }) {
       }}
     >
       {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-      {copied ? "Copied" : "Copy"}
+      {copied ? "Copied" : label}
     </Button>
   );
 }
@@ -2094,9 +2132,9 @@ const wizardSchema = z.object({
 
 export function Stepper({ steps, current }: { steps: string[]; current: number }) {
   return (
-    <div className="grid gap-2 md:grid-cols-5">
+    <div className="flex flex-col gap-2 md:flex-row w-full">
       {steps.map((step, index) => (
-        <div key={step} className={cn("rounded-2xl border p-3", current === index ? "border-violet-600 bg-violet-600 text-white shadow-lg shadow-violet-500/20" : index < current ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-violet-500/15 bg-white text-neutral-500")}>
+        <div key={step} className={cn("flex-1 rounded-2xl border p-3", current === index ? "border-violet-600 bg-violet-600 text-white shadow-lg shadow-violet-500/20" : index < current ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-violet-500/15 bg-white text-neutral-500")}>
           <p className="text-xs font-semibold">Step {index + 1}</p>
           <p className="mt-1 text-sm font-semibold">{step}</p>
         </div>
@@ -2105,39 +2143,43 @@ export function Stepper({ steps, current }: { steps: string[]; current: number }
   );
 }
 
-import { createCampaignAction } from "@/app/actions/campaigns";
+import { createCampaignAction, generatePlaybookAction } from "@/app/actions/campaigns";
 
 export function CampaignWizard() {
   const router = useRouter();
-  const steps = ["Purpose", "Context", "Rules", "Targets", "Playbook"];
+  const steps = ["Purpose", "Rules", "Targets", "Playbook"];
   const [step, setStep] = React.useState(0);
   const [type, setType] = React.useState<CampaignType>("Prospecting");
-  const [selectedGoals, setSelectedGoals] = React.useState(["Prepare manual follow-up queue"]);
-  const [selectedChannels, setSelectedChannels] = React.useState(["Gmail", "LinkedIn"]);
+  const [selectedGoals, setSelectedGoals] = React.useState<string[]>([]);
+  const [selectedChannels, setSelectedChannels] = React.useState<string[]>([]);
   const [customChannel, setCustomChannel] = React.useState("");
-  const [contextSelections, setContextSelections] = React.useState<Record<string, string[]>>(defaultContextSelections);
+  const [contextSelections, setContextSelections] = React.useState<Record<string, string[]>>({});
   const [cadence, setCadence] = React.useState("Balanced");
   const [tone, setTone] = React.useState("Executive");
   const [stopRulesByType, setStopRulesByType] = React.useState<Record<CampaignType, string[]>>(defaultStopRulesByType);
   
   // New States for Targets
-  const [wizardTargets, setWizardTargets] = React.useState<Array<{id: string, name: string, company: string, role: string, email: string, note?: string}>>([]);
-  const [targetDraft, setTargetDraft] = React.useState({ name: "", company: "", role: "", email: "" });
+  const [wizardTargets, setWizardTargets] = React.useState<Array<{id: string, name: string, company: string, role: string, email: string, phone?: string, profileUrl?: string, note?: string}>>([]);
+  const [targetDraft, setTargetDraft] = React.useState({ name: "", company: "", role: "", email: "", phone: "", profileUrl: "" });
   const [targetMode, setTargetMode] = React.useState<"paste" | "upload" | "manual">("manual");
   const csvInputRef = React.useRef<HTMLInputElement>(null);
   
   // New States for Playbook
-  const [wizardPlaybookStages, setWizardPlaybookStages] = React.useState<PlaybookStage[]>(playbookStages.slice(0, 4));
+  const [wizardPlaybookStages, setWizardPlaybookStages] = React.useState<PlaybookStage[]>([]);
   const [isRegenerating, setIsRegenerating] = React.useState(false);
+  const [isGenerating, setIsGenerating] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [editingStageId, setEditingStageId] = React.useState<string | null>(null);
+  const regeneratingRef = React.useRef(false);
+  const generatingRef = React.useRef(false);
+  const savingRef = React.useRef(false);
 
   const form = useForm<z.infer<typeof wizardSchema>>({
     resolver: zodResolver(wizardSchema),
     defaultValues: {
-      name: "Q3 finance follow-up workspace",
-      goal: "Book qualified discovery calls with finance leaders.",
-      audience: "CFOs and VP Finance at SaaS teams",
+      name: "",
+      goal: "",
+      audience: "",
     },
   });
   const campaignName = useWatch({ control: form.control, name: "name" });
@@ -2175,7 +2217,7 @@ export function CampaignWizard() {
   const handleAddTarget = () => {
     if (!targetDraft.name.trim() || !targetDraft.email.trim()) return;
     setWizardTargets(prev => [...prev, { id: Date.now().toString(), ...targetDraft }]);
-    setTargetDraft({ name: "", company: "", role: "", email: "" });
+    setTargetDraft({ name: "", company: "", role: "", email: "", phone: "", profileUrl: "" });
   };
 
   const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2184,23 +2226,25 @@ export function CampaignWizard() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      const header = lines[0].toLowerCase().split(",").map(h => h.trim().replace(/"/g, ""));
-      const nameIdx = header.findIndex(h => h.includes("name"));
-      const emailIdx = header.findIndex(h => h.includes("email"));
-      const companyIdx = header.findIndex(h => h.includes("company") || h.includes("org"));
-      const roleIdx = header.findIndex(h => h.includes("role") || h.includes("title") || h.includes("position"));
-      const parsed = lines.slice(1).map((line, i) => {
-        const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
-        return {
-          id: `csv-${Date.now()}-${i}`,
-          name: nameIdx >= 0 ? cols[nameIdx] : cols[0] || "",
-          email: emailIdx >= 0 ? cols[emailIdx] : "",
-          company: companyIdx >= 0 ? cols[companyIdx] : "",
-          role: roleIdx >= 0 ? cols[roleIdx] : "",
-        };
-      }).filter(t => t.name);
-      setWizardTargets(prev => [...prev, ...parsed]);
+      try {
+        const records = parse(text, { columns: true, skip_empty_lines: true }) as Record<string, string>[];
+        const parsed = records.map((record, i) => {
+          const normalized = normalizeCsvRecord(record);
+          return {
+            id: `csv-${Date.now()}-${i}`,
+            name: normalized.name || "",
+            company: normalized.company || "",
+            role: normalized.role || "",
+            email: normalized.email || "",
+            phone: normalized.phone || "",
+            profileUrl: normalized.profileUrl || "",
+            note: normalized.notes || "",
+          };
+        }).filter(t => t.name);
+        setWizardTargets(prev => [...prev, ...parsed]);
+      } catch (err) {
+        console.error("CSV parse error", err);
+      }
       if (csvInputRef.current) csvInputRef.current.value = "";
     };
     reader.readAsText(file);
@@ -2217,6 +2261,8 @@ export function CampaignWizard() {
         company: cols[1] || "",
         role: cols[2] || "",
         email: cols[3] || "",
+        phone: cols[4] || "",
+        profileUrl: cols[5] || "",
       };
     }).filter(t => t.name);
     setWizardTargets(prev => [...prev, ...parsed]);
@@ -2246,20 +2292,28 @@ export function CampaignWizard() {
   };
 
   const handleRegenerate = async () => {
+    if (regeneratingRef.current) return;
+    regeneratingRef.current = true;
     setIsRegenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setWizardPlaybookStages(prev => prev.map((stage, i) => {
-      const pool = i === 0 ? regenerationVariants.short
-        : i === prev.length - 1 ? regenerationVariants.breakup
-        : i % 2 === 1 ? regenerationVariants.followup
-        : regenerationVariants.value;
-      const next = pool[Math.floor(Math.random() * pool.length)];
-      return { ...stage, message: next };
-    }));
-    setIsRegenerating(false);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setWizardPlaybookStages(prev => prev.map((stage, i) => {
+        const pool = i === 0 ? regenerationVariants.short
+          : i === prev.length - 1 ? regenerationVariants.breakup
+          : i % 2 === 1 ? regenerationVariants.followup
+          : regenerationVariants.value;
+        const next = pool[Math.floor(Math.random() * pool.length)];
+        return { ...stage, message: next };
+      }));
+    } finally {
+      regeneratingRef.current = false;
+      setIsRegenerating(false);
+    }
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsSaving(true);
     try {
       const campaign = await createCampaignAction({
@@ -2281,8 +2335,54 @@ export function CampaignWizard() {
       router.push(`/app/campaigns/${campaign.id}`);
     } catch (error) {
       console.error(error);
+      savingRef.current = false;
       setIsSaving(false);
     }
+  };
+
+  const handleContinue = async () => {
+    if (step === 2) {
+      if (generatingRef.current) return;
+      generatingRef.current = true;
+      setIsGenerating(true);
+      try {
+        const mappedType = type === "Prospecting" ? "PROSPECTING" 
+          : type === "Recruiting" ? "RECRUITING" 
+          : type === "HR request" ? "HR_REQUEST"
+          : type === "Client documents" ? "CLIENT_DOCUMENTS"
+          : type === "Invoice follow-up" ? "INVOICE_FOLLOW_UP"
+          : type === "Vendor follow-up" ? "VENDOR_FOLLOW_UP"
+          : "CUSTOM";
+
+        const res = await generatePlaybookAction({
+          type: mappedType,
+          goal: campaignGoal && campaignGoal.length >= 5 ? campaignGoal : "Manual follow-up campaign",
+          context: form.getValues().goal,
+          tone: selectedTone,
+          channel: manualChannels.join(", "),
+        });
+        
+        setWizardPlaybookStages(res.stages.map((s, i) => ({
+          id: `stage-${i}`,
+          campaignId: "",
+          title: s.name,
+          delay: `${s.delayDays} days`,
+          status: "Editable",
+          condition: s.condition,
+          message: s.messageBody,
+        })));
+        setStep(3);
+      } catch (e) {
+        console.error("Failed to generate playbook", e);
+        alert("Service temporarily unavailable");
+      } finally {
+        generatingRef.current = false;
+        setIsGenerating(false);
+      }
+      return;
+    }
+
+    setStep(Math.min(steps.length - 1, step + 1));
   };
 
   return (
@@ -2295,17 +2395,16 @@ export function CampaignWizard() {
         </CardHeader>
         <CardContent>
           {step > 0 ? (
-            <CampaignContinuityCard
-              name={campaignName}
-              type={type}
-              goal={campaignGoal}
-              items={[
-                ["Goal", selectedGoals],
-                ["Manual channels", manualChannels],
-                [contextProfile.memoryLabel, contextMemoryValues],
-                ["Rules", [cadence, tone]],
-              ]}
-            />
+              <CampaignContinuityCard
+                name={campaignName}
+                type={type}
+                goal={campaignGoal}
+                items={[
+                  ["Goal", selectedGoals],
+                  ["Manual channels", manualChannels],
+                  ["Rules", [cadence, tone]],
+                ]}
+              />
           ) : null}
           {step === 0 && (
             <form className="space-y-5">
@@ -2334,9 +2433,15 @@ export function CampaignWizard() {
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Campaign name"><Input {...form.register("name")} /></Field>
                 <Field label="Campaign type"><Input value={type} readOnly /></Field>
-                <Field label="Extra context"><Input {...form.register("goal")} /></Field>
                 <Field label="Deadline optional"><Input type="date" /></Field>
               </div>
+              <Field label="Campaign context (Required for AI personalization)">
+                <textarea 
+                  className="flex min-h-[100px] w-full rounded-xl border border-violet-500/15 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30" 
+                  placeholder="Paste context, meeting notes, target details, or any specifics you want the AI to use to write the follow-up messages..."
+                  {...form.register("goal")} 
+                />
+              </Field>
               <SetupSummary
                 items={[
                   ["Goals", selectedGoals],
@@ -2346,27 +2451,6 @@ export function CampaignWizard() {
             </form>
           )}
           {step === 1 && (
-            <div className="space-y-4">
-              <div className="grid gap-4 xl:grid-cols-2">
-                {contextProfile.panels.map((panel) => (
-                  <div key={panel.id} className={panel.id.endsWith("Excluded") || panel.id.endsWith("Sources") ? "xl:col-span-2" : undefined}>
-                    <ChoicePanel
-                      title={panel.title}
-                      description={panel.description}
-                      icon={panel.icon}
-                      options={panel.options}
-                      selected={contextSelections[panel.id] ?? []}
-                      onToggle={(item) => toggleContextSelection(panel.id, item)}
-                      searchPlaceholder={panel.searchPlaceholder}
-                      customPlaceholder={panel.customPlaceholder}
-                    />
-                  </div>
-                ))}
-              </div>
-              <SetupSummary items={contextSummaryItems} title={`${contextProfile.memoryLabel} summary`} />
-            </div>
-          )}
-          {step === 2 && (
             <div className="space-y-5">
               <OptionTiles
                 title="Follow-up cadence"
@@ -2382,14 +2466,6 @@ export function CampaignWizard() {
                 selected={tone}
                 onSelect={setTone}
               />
-              <ChoicePanel
-                title="Stop conditions"
-                description="Select what should move an item out of the manual follow-up queue."
-                icon={<ShieldCheck className="h-4 w-4" />}
-                options={stopConditionOptionsByType[type]}
-                selected={stopRules}
-                onToggle={toggleStopRule}
-              />
               <div className="grid gap-3 md:grid-cols-4">
                 {workflowSteps.map((item, index) => (
                   <div key={item} className="rounded-2xl border border-violet-500/15 bg-violet-50/60 p-4 text-sm font-semibold">
@@ -2400,7 +2476,7 @@ export function CampaignWizard() {
               </div>
             </div>
           )}
-          {step === 3 && (
+          {step === 2 && (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
                 {(["upload", "paste", "manual"] as const).map((mode) => (
@@ -2446,11 +2522,13 @@ export function CampaignWizard() {
               {targetMode === "manual" && (
                 <div className="rounded-2xl border border-violet-500/15 bg-violet-50/30 p-4">
                   <p className="mb-3 text-sm font-semibold">Add one target manually</p>
-                  <div className="grid gap-3 md:grid-cols-4">
+                  <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
                     <Input placeholder="Name *" value={targetDraft.name} onChange={e => setTargetDraft(p => ({ ...p, name: e.target.value }))} />
                     <Input placeholder="Email *" type="email" value={targetDraft.email} onChange={e => setTargetDraft(p => ({ ...p, email: e.target.value }))} />
                     <Input placeholder="Company" value={targetDraft.company} onChange={e => setTargetDraft(p => ({ ...p, company: e.target.value }))} />
                     <Input placeholder="Role" value={targetDraft.role} onChange={e => setTargetDraft(p => ({ ...p, role: e.target.value }))} />
+                    <Input placeholder="Phone" type="tel" value={targetDraft.phone} onChange={e => setTargetDraft(p => ({ ...p, phone: e.target.value }))} />
+                    <Input placeholder="LinkedIn URL" type="url" value={targetDraft.profileUrl} onChange={e => setTargetDraft(p => ({ ...p, profileUrl: e.target.value }))} />
                   </div>
                   <div className="mt-3 flex justify-end">
                     <Button variant="secondary" onClick={handleAddTarget} disabled={!targetDraft.name || !targetDraft.email}>Add target</Button>
@@ -2458,14 +2536,7 @@ export function CampaignWizard() {
                 </div>
               )}
 
-              <SetupSummary
-                title={`${contextProfile.targetSummaryLabel} carried into targets`}
-                items={[
-                  [contextProfile.targetSummaryLabel, contextMemoryValues],
-                  ["Stop rules", stopRules],
-                  ["Manual channels", manualChannels],
-                ]}
-              />
+
               <div className="overflow-hidden rounded-2xl border border-violet-500/15">
                 <table className="w-full min-w-[760px] text-left text-sm">
                   <thead className="bg-violet-50 text-xs uppercase text-violet-900/55">
@@ -2474,6 +2545,8 @@ export function CampaignWizard() {
                       <th className="px-4 py-3">Company</th>
                       <th className="px-4 py-3">Role</th>
                       <th className="px-4 py-3">Email</th>
+                      <th className="px-4 py-3">Phone</th>
+                      <th className="px-4 py-3">LinkedIn</th>
                       <th className="px-4 py-3">Action</th>
                     </tr>
                   </thead>
@@ -2491,6 +2564,8 @@ export function CampaignWizard() {
                           <td className="px-4 py-3">{target.company}</td>
                           <td className="px-4 py-3">{target.role}</td>
                           <td className="px-4 py-3">{target.email}</td>
+                          <td className="px-4 py-3">{target.phone || "—"}</td>
+                          <td className="px-4 py-3">{target.profileUrl ? "Yes" : "—"}</td>
                           <td className="px-4 py-3">
                             <button
                               onClick={() => setWizardTargets(prev => prev.filter(t => t.id !== target.id))}
@@ -2507,27 +2582,26 @@ export function CampaignWizard() {
               </div>
             </div>
           )}
-          {step === 4 && (
+          {step === 3 && (
             <div className="space-y-4">
               <AISummaryCard title="AI Playbook preview">
-                Prepared from {selectedGoals.join(", ")}, {manualChannels.join(" + ") || "manual channels"}, and the {contextProfile.previewLabel.toLowerCase()} selected earlier. AI drafts reviewed next actions only; no message is sent from here.
+                Prepared from {selectedGoals.join(", ")} and {manualChannels.join(" + ") || "manual channels"}. AI drafts reviewed next actions only; no message is sent from here.
               </AISummaryCard>
               <SetupSummary
                 title="Campaign memory"
                 items={[
                   ["Campaign", [campaignName || "Untitled campaign", type]],
-                  [contextProfile.previewLabel, contextMemoryValues],
                   ["Manual rules", [selectedCadence, selectedTone, ...stopRules.slice(0, 2)]],
                 ]}
               />
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="flex flex-col gap-4">
                 {isRegenerating ? (
-                  <div className="col-span-2 py-12 text-center text-neutral-500">
+                  <div className="py-12 text-center text-neutral-500">
                     <RefreshCcw className="mx-auto mb-4 h-6 w-6 animate-spin" />
                     <p>AI is generating new message variations...</p>
                   </div>
                 ) : (
-                  wizardPlaybookStages.map((stage) => (
+                  wizardPlaybookStages.map((stage, index) => (
                     editingStageId === stage.id ? (
                       <Card key={stage.id}>
                         <CardContent className="space-y-3 pt-5">
@@ -2554,15 +2628,12 @@ export function CampaignWizard() {
                         </CardContent>
                       </Card>
                     ) : (
-                      <div key={stage.id} className="relative">
-                        <PlaybookStageCard stage={stage} />
-                        <button
-                          onClick={() => setEditingStageId(stage.id)}
-                          className="absolute right-3 top-3 rounded-lg border border-violet-500/15 bg-white px-2 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50"
-                        >
-                          Edit
-                        </button>
-                      </div>
+                      <PlaybookStageCard 
+                        key={stage.id} 
+                        stage={stage} 
+                        index={index} 
+                        onEdit={() => setEditingStageId(stage.id)} 
+                      />
                     )
                   ))
                 )}
@@ -2578,16 +2649,19 @@ export function CampaignWizard() {
             </div>
           )}
           <div className="mt-6 flex justify-between border-t border-neutral-100 pt-5">
-            <Button variant="secondary" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0 || isSaving}>Back</Button>
+            <Button variant="secondary" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0 || isSaving || isGenerating}>Back</Button>
             {step < steps.length - 1 ? (
-              <Button onClick={() => setStep(Math.min(steps.length - 1, step + 1))}>
-                Continue
-                <ChevronRight className="h-4 w-4" />
+              <Button 
+                disabled={isGenerating || isSaving}
+                onClick={handleContinue}
+              >
+                {isGenerating ? "Generating..." : "Continue"}
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
               </Button>
             ) : (
               <Button onClick={handleSave} disabled={isSaving}>
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
                 {isSaving ? "Saving..." : "Save campaign"}
-                <ChevronRight className="h-4 w-4" />
               </Button>
             )}
           </div>
@@ -2738,8 +2812,8 @@ function ChoicePill({ label, active, onClick }: { label: string; active: boolean
           : "border-violet-500/15 bg-white text-neutral-700 hover:border-violet-300 hover:bg-violet-50",
       )}
     >
-      {active ? <Check className="h-3.5 w-3.5" /> : null}
-      {label}
+      {active && <Check className="h-3.5 w-3.5" />}
+      <span>{label}</span>
     </button>
   );
 }
@@ -2878,7 +2952,7 @@ function SummaryValues({ label, values, tone = "neutral" }: { label: string; val
   return values.map((value) => <Badge key={value} tone={tone}>{value}</Badge>);
 }
 
-function ChannelLogoPill({ channels }: { channels: string[] }) {
+export function ChannelLogoPill({ channels }: { channels: string[] }) {
   return (
     <span className="inline-flex min-h-8 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 shadow-sm">
       {channels.map((channel) => {
@@ -2993,13 +3067,11 @@ export function CampaignTabs({
           <TargetTable rows={campaignTargets} />
         )}
       </Tabs.Content>
-      <Tabs.Content value="playbook" className="grid gap-4 lg:grid-cols-2">
+      <Tabs.Content value="playbook" className="flex flex-col gap-4">
         {stages.length === 0 ? (
-          <div className="col-span-2">
-            <EmptyState title="No playbook stages" description="Playbook stages are generated when you create a campaign using the wizard." />
-          </div>
+          <EmptyState title="No playbook stages" description="Playbook stages are generated when you create a campaign using the wizard." />
         ) : (
-          stages.map((stage) => <PlaybookStageCard key={stage.id} stage={stage} />)
+          stages.map((stage, index) => <PlaybookStageCard key={stage.id} stage={stage} index={index} />)
         )}
       </Tabs.Content>
       <Tabs.Content value="follow-ups">
@@ -3028,9 +3100,13 @@ function CampaignDocumentsTab({ sources, onAdd }: { sources: DirectoryDataSource
   const [draft, setDraft] = React.useState<DirectoryDraft>({ title: "", type: "Note", url: "", description: "" });
   const [localSources, setLocalSources] = React.useState<DirectoryDataSource[]>(sources);
   const [error, setError] = React.useState("");
+  const [isAdding, setIsAdding] = React.useState(false);
+  const isAddingRef = React.useRef(false);
 
   const handleAdd = async () => {
-    if (!draft.title.trim()) return;
+    if (isAddingRef.current || !draft.title.trim()) return;
+    isAddingRef.current = true;
+    setIsAdding(true);
     setError("");
 
     try {
@@ -3049,6 +3125,9 @@ function CampaignDocumentsTab({ sources, onAdd }: { sources: DirectoryDataSource
       setDraft({ title: "", type: "Note", url: "", description: "" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to add document.");
+    } finally {
+      isAddingRef.current = false;
+      setIsAdding(false);
     }
   };
 
@@ -3063,6 +3142,7 @@ function CampaignDocumentsTab({ sources, onAdd }: { sources: DirectoryDataSource
         placeholder="Contract, folder, invoice, reference link..."
         error={error}
         onError={setError}
+        isAdding={isAdding}
       />
       {localSources.length > 0 ? (
         <div className="grid gap-3 md:grid-cols-2">
@@ -3091,6 +3171,7 @@ function CampaignDocumentsTab({ sources, onAdd }: { sources: DirectoryDataSource
 function ImportProspectsDialog({ campaignId, currentCount }: { campaignId: string; currentCount: number }) {
   const router = useRouter();
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const importingRef = React.useRef(false);
   const [open, setOpen] = React.useState(false);
   const [csv, setCsv] = React.useState("");
   const [error, setError] = React.useState("");
@@ -3123,8 +3204,9 @@ function ImportProspectsDialog({ campaignId, currentCount }: { campaignId: strin
   };
 
   const handleImport = async () => {
-    if (!canImport) return;
+    if (importingRef.current || !canImport) return;
 
+    importingRef.current = true;
     setIsImporting(true);
     setError("");
 
@@ -3151,6 +3233,7 @@ function ImportProspectsDialog({ campaignId, currentCount }: { campaignId: strin
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed.");
     } finally {
+      importingRef.current = false;
       setIsImporting(false);
     }
   };
@@ -3220,7 +3303,7 @@ function ImportProspectsDialog({ campaignId, currentCount }: { campaignId: strin
                     </div>
                   ) : (
                     <div className="p-6 text-center text-sm text-neutral-500">
-                      No valid prospects found. Ensure your CSV has a header row with at least a 'name' column.
+                      No valid prospects found. Ensure your CSV has a header row with at least a &apos;name&apos; column.
                     </div>
                   )}
                 </div>
@@ -3248,7 +3331,7 @@ function ImportProspectsDialog({ campaignId, currentCount }: { campaignId: strin
             </Dialog.Close>
             <Button type="button" variant="accent" className="rounded-md" onClick={handleImport} disabled={!canImport}>
               {isImporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Upload className="h-4 w-4" />}
-              Import
+              {isImporting ? "Importing..." : "Import"}
             </Button>
           </div>
         </Dialog.Content>
@@ -3412,7 +3495,7 @@ const emptyDirectoryDraft: DirectoryDraft = {
   description: "",
 };
 
-const directoryItemTypes = ["Document", "Link", "Note", "Drive folder", "Email thread", "Invoice", "Contract"];
+const directoryItemTypes = ["Document", "Presentation", "Spreadsheet", "Image", "Link", "Note", "Drive folder", "Email thread", "Invoice", "Contract"];
 
 export type DirectoryDataSource = {
   id: string; title: string; type: string; url: string; description: string; fileSizeBytes?: number; campaignId: string; targetId?: string; linkedCampaign?: string; linkedTarget?: string; missing?: boolean; importance: string; lastChecked: string;
@@ -3450,17 +3533,19 @@ export function DataDirectoryWorkspace({
   const [selectedTargetId, setSelectedTargetId] = React.useState(initialTargets.find((target) => target.campaignId === selectedCampaignId)?.id ?? "");
   const [items, setItems] = React.useState<DirectoryDataSource[]>(initialDataSources);
   const [directoryError, setDirectoryError] = React.useState("");
+  const [isAddingCampaignItem, setIsAddingCampaignItem] = React.useState(false);
+  const [isAddingTargetItem, setIsAddingTargetItem] = React.useState(false);
   const [campaignDraft, setCampaignDraft] = React.useState<DirectoryDraft>({
-    title: "Campaign folder",
-    type: "Drive folder",
-    url: "https://example.com/folder",
-    description: "Shared folder with documents attached to this campaign.",
+    title: "",
+    type: "Document",
+    url: "",
+    description: "",
   });
   const [targetDraft, setTargetDraft] = React.useState<DirectoryDraft>({
-    title: "Prospect note",
-    type: "Note",
+    title: "",
+    type: "Document",
     url: "",
-    description: "Useful detail to keep before the next follow-up.",
+    description: "",
   });
 
   const selectedCampaign = initialCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? initialCampaigns[0];
@@ -3483,6 +3568,7 @@ export function DataDirectoryWorkspace({
   const addCampaignItem = async () => {
     if (!campaignDraft.title.trim()) return;
     setDirectoryError("");
+    setIsAddingCampaignItem(true);
 
     try {
       const source = campaignDraft.file
@@ -3510,12 +3596,15 @@ export function DataDirectoryWorkspace({
       setCampaignDraft(emptyDirectoryDraft);
     } catch (err) {
       setDirectoryError(err instanceof Error ? err.message : "Unable to add document.");
+    } finally {
+      setIsAddingCampaignItem(false);
     }
   };
 
   const addTargetItem = async () => {
     if (!selectedTarget || !targetDraft.title.trim()) return;
     setDirectoryError("");
+    setIsAddingTargetItem(true);
 
     try {
       const source = targetDraft.file
@@ -3547,6 +3636,8 @@ export function DataDirectoryWorkspace({
       setTargetDraft(emptyDirectoryDraft);
     } catch (err) {
       setDirectoryError(err instanceof Error ? err.message : "Unable to add document.");
+    } finally {
+      setIsAddingTargetItem(false);
     }
   };
 
@@ -3611,6 +3702,7 @@ export function DataDirectoryWorkspace({
               placeholder="Contract, onboarding folder, invoice PDF..."
               error={directoryError}
               onError={setDirectoryError}
+              isAdding={isAddingCampaignItem}
             />
             <DirectoryItemList
               items={campaignItems}
@@ -3644,11 +3736,9 @@ export function DataDirectoryWorkspace({
                     <p className="truncate font-semibold text-[#120b2f]">{target.name}</p>
                     <p className="mt-1 truncate text-sm text-[#120b2f]/55">{target.role}, {target.company}</p>
                   </div>
-                  <TargetStatusBadge status={target.status ?? "Not contacted"} />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge>{items.filter((item) => item.targetId === target.id).length} items</Badge>
-                  <Badge tone={target.priority === "High" ? "rose" : target.priority === "Medium" ? "amber" : "blue"}>{target.priority ?? "Medium"}</Badge>
                 </div>
               </button>
             )) : (
@@ -3684,6 +3774,7 @@ export function DataDirectoryWorkspace({
               disabled={!selectedTarget}
               error={directoryError}
               onError={setDirectoryError}
+              isAdding={isAddingTargetItem}
             />
             <DirectoryItemList
               items={targetItems}
@@ -3792,6 +3883,16 @@ function formatDataSourceType(type: string) {
   return "Document";
 }
 
+function inferDirectoryFileType(lowerName: string) {
+  if (lowerName.includes("invoice")) return "Invoice";
+  if (lowerName.includes("contract")) return "Contract";
+  if (lowerName.endsWith(".ppt") || lowerName.endsWith(".pptx") || lowerName.endsWith(".key")) return "Presentation";
+  if (lowerName.endsWith(".csv") || lowerName.endsWith(".xls") || lowerName.endsWith(".xlsx")) return "Spreadsheet";
+  if (lowerName.endsWith(".png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || lowerName.endsWith(".webp")) return "Image";
+
+  return "Document";
+}
+
 function DirectoryDraftForm({
   draft,
   onChange,
@@ -3816,6 +3917,10 @@ function DirectoryDraftForm({
   isAdding?: boolean;
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [localIsAdding, setLocalIsAdding] = React.useState(false);
+  const addInFlightRef = React.useRef(false);
+  const adding = isAdding || localIsAdding;
+
   const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -3827,11 +3932,7 @@ function DirectoryDraftForm({
     }
 
     const lowerName = file.name.toLowerCase();
-    const inferredType = lowerName.includes("invoice")
-      ? "Invoice"
-      : lowerName.includes("contract")
-        ? "Contract"
-        : "Document";
+    const inferredType = inferDirectoryFileType(lowerName);
 
     onChange({
       title: draft.title.trim() || file.name,
@@ -3843,6 +3944,19 @@ function DirectoryDraftForm({
     });
     onError?.("");
     event.target.value = "";
+  };
+
+  const handleAddClick = async () => {
+    if (addInFlightRef.current || disabled || !draft.title.trim()) return;
+    addInFlightRef.current = true;
+    setLocalIsAdding(true);
+
+    try {
+      await onAdd();
+    } finally {
+      addInFlightRef.current = false;
+      setLocalIsAdding(false);
+    }
   };
 
   return (
@@ -3857,7 +3971,7 @@ function DirectoryDraftForm({
         className="hidden"
         onChange={handleUpload}
         disabled={disabled}
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.txt"
+        accept=".pdf,.doc,.docx,.ppt,.pptx,.key,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.webp,.txt,.md"
       />
       <div className="grid gap-3 lg:grid-cols-[1fr_160px]">
         <Input
@@ -3892,13 +4006,13 @@ function DirectoryDraftForm({
       {draft.fileSizeBytes ? <p className="mt-2 text-xs font-medium text-neutral-500">Selected file: {formatBytes(draft.fileSizeBytes)} / {formatBytes(MAX_DOCUMENT_BYTES)} max</p> : null}
       {error ? <p className="mt-2 text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="mt-3 flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={disabled || isAdding}>
+        <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={disabled || adding}>
           <Upload className="h-4 w-4" />
           Upload file
         </Button>
-        <Button type="button" onClick={onAdd} disabled={disabled || isAdding || !draft.title.trim()}>
-          {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          {buttonLabel}
+        <Button type="button" onClick={handleAddClick} disabled={disabled || adding || !draft.title.trim()}>
+          {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          {adding ? "Adding..." : buttonLabel}
         </Button>
       </div>
     </div>
@@ -3948,7 +4062,11 @@ function DirectoryEditableItem({ item, onDelete }: { item: DirectoryDataSource; 
     Icon = FileSpreadsheet;
     iconColor = "text-emerald-600";
     bgColor = "bg-emerald-50";
-  } else if (titleLower.endsWith(".png") || titleLower.endsWith(".jpg") || titleLower.endsWith(".jpeg")) {
+  } else if (titleLower.endsWith(".ppt") || titleLower.endsWith(".pptx") || titleLower.endsWith(".key")) {
+    Icon = FileText;
+    iconColor = "text-orange-600";
+    bgColor = "bg-orange-50";
+  } else if (titleLower.endsWith(".png") || titleLower.endsWith(".jpg") || titleLower.endsWith(".jpeg") || titleLower.endsWith(".webp")) {
     Icon = FileImage;
     iconColor = "text-amber-600";
     bgColor = "bg-amber-50";
@@ -4008,7 +4126,7 @@ function DirectoryEditableItem({ item, onDelete }: { item: DirectoryDataSource; 
 
 function getDirectoryFormatLabel(item: DirectoryDataSource) {
   const extension = item.title.split(".").pop()?.toUpperCase();
-  const knownExtensions = ["PDF", "DOC", "DOCX", "XLS", "XLSX", "CSV", "PNG", "JPG", "JPEG", "TXT"];
+  const knownExtensions = ["PDF", "DOC", "DOCX", "PPT", "PPTX", "KEY", "XLS", "XLSX", "CSV", "PNG", "JPG", "JPEG", "WEBP", "TXT", "MD"];
 
   if (extension && knownExtensions.includes(extension)) {
     return extension === "JPEG" ? "JPG" : extension;
@@ -4019,6 +4137,9 @@ function getDirectoryFormatLabel(item: DirectoryDataSource) {
   if (item.type === "Email thread") return "MAIL";
   if (item.type === "Invoice") return "PDF";
   if (item.type === "Contract") return "DOC";
+  if (item.type === "Presentation") return "PPT";
+  if (item.type === "Spreadsheet") return "XLS";
+  if (item.type === "Image") return "IMG";
 
   return "DOC";
 }
@@ -4026,7 +4147,8 @@ function getDirectoryFormatLabel(item: DirectoryDataSource) {
 function getDirectoryFormatBadgeClass(label: string) {
   if (label === "PDF") return "bg-rose-600";
   if (label === "CSV" || label === "XLS" || label === "XLSX") return "bg-emerald-600";
-  if (label === "PNG" || label === "JPG") return "bg-amber-600";
+  if (label === "PPT" || label === "PPTX" || label === "KEY") return "bg-orange-600";
+  if (label === "PNG" || label === "JPG" || label === "WEBP" || label === "IMG") return "bg-amber-600";
   if (label === "LINK") return "bg-sky-600";
   if (label === "MAIL") return "bg-blue-600";
   if (label === "NOTE") return "bg-violet-600";

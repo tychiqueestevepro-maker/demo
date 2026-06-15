@@ -71,6 +71,7 @@ function mapDataSourceType(type: string) {
   if (type === "Invoice") return "INVOICE";
   if (type === "Contract") return "CONTRACT";
   if (type === "Drive folder") return "GOOGLE_DRIVE";
+  if (type === "Spreadsheet") return "SPREADSHEET";
 
   return "DOCUMENT";
 }

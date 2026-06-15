@@ -1,15 +1,27 @@
 import Link from "next/link";
-import { ArrowRight, CheckCircle2, Clock3, MessageCircle, Plus, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, Mail, MessageCircle, Plus, Users } from "lucide-react";
 import { format } from "date-fns";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChannelLogoPill } from "@/components/product-components";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export default async function DashboardPage() {
   const { userId } = await getServerUser();
+
+  const campaignChannelValues = (channel: string) => {
+    return channel
+      .split("+")
+      .map((item) => item.trim())
+      .map((item) => (item === "Email" ? "Gmail" : item))
+      .filter(Boolean);
+  };
+
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
 
   // Run all queries in parallel instead of sequentially
   const [repliesCount, dueFollowUps, targetsCount, activeCampaignsData] = await Promise.all([
@@ -17,10 +29,14 @@ export default async function DashboardPage() {
       where: { userId, status: "REPLIED" },
     }),
     prisma.followUp.findMany({
-      where: { userId, status: "DUE" },
+      where: { 
+        userId, 
+        status: { in: ["PENDING", "DUE"] },
+        dueAt: { lte: endOfToday }
+      },
       orderBy: { dueAt: "asc" },
       include: { target: true, campaign: true },
-      take: 10,
+      take: 5,
     }),
     prisma.campaignTarget.count({
       where: { userId },
@@ -29,7 +45,13 @@ export default async function DashboardPage() {
       where: { userId, status: { in: ["ACTIVE", "WAITING"] } },
       include: {
         targets: { select: { status: true } },
-        followUps: { select: { status: true } },
+        followUps: { 
+          where: { 
+            status: { in: ["PENDING", "DUE"] },
+            dueAt: { lte: endOfToday }
+          },
+          select: { status: true } 
+        },
       },
     }),
   ]);
@@ -37,9 +59,10 @@ export default async function DashboardPage() {
   const activeCampaigns = activeCampaignsData.map((campaign) => {
     const totalTargets = campaign.targets.length;
     const completed = campaign.targets.filter((t) => t.status === "COMPLETED" || t.status === "INTERESTED").length;
+    const blocked = campaign.targets.filter((t) => t.status === "STOPPED" || t.status === "NOT_INTERESTED").length;
     const replies = campaign.targets.filter((t) => t.status === "REPLIED").length;
-    const followUpsDue = campaign.followUps.filter((f) => f.status === "DUE").length;
-    const progress = totalTargets > 0 ? Math.round((completed / totalTargets) * 100) : 0;
+    const followUpsDue = campaign.followUps.length;
+    const progress = totalTargets > 0 ? Math.round(((completed + blocked) / totalTargets) * 100) : 0;
 
     return {
       ...campaign,
@@ -107,12 +130,14 @@ export default async function DashboardPage() {
                   {index + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate font-semibold text-[#120b2f]">{item.target.name}</span>
+                  <span className="block truncate font-semibold text-[#120b2f]">
+                    {new Date(item.dueAt).getTime() < new Date().setHours(0, 0, 0, 0) ? "🚨 " : ""}
+                    {item.target.name}
+                  </span>
                   <span className="mt-1 block text-sm leading-6 text-[#120b2f]/58">{item.reason || "Follow-up due"}</span>
                   <span className="mt-2 block text-xs font-semibold text-violet-700">{item.campaign.name}</span>
                 </span>
                 <span className="flex flex-wrap items-start gap-2 md:justify-end">
-                  <Badge tone={item.priority === "HIGH" || item.priority === "URGENT" ? "rose" : item.priority === "MEDIUM" ? "amber" : "blue"}>{item.priority}</Badge>
                   <Badge>{format(new Date(item.dueAt), "MMM d")}</Badge>
                 </span>
               </Link>
@@ -146,7 +171,11 @@ export default async function DashboardPage() {
                 <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#120b2f]/55">{campaign.goal}</p>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-[#120b2f]/45">
                   {campaign.deadline && <span>Deadline: {format(new Date(campaign.deadline), "MMM d, yyyy")}</span>}
-                  {campaign.channel && <span>{campaign.channel}</span>}
+                  {campaign.channel && (
+                    <span className="flex items-center gap-1">
+                      <ChannelLogoPill channels={campaignChannelValues(campaign.channel)} />
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -160,7 +189,7 @@ export default async function DashboardPage() {
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <MiniMetric label="Due" value={campaign.followUpsDue} />
-                  <MiniMetric label="Replies" value={campaign.replies} />
+                  <MiniMetric label="Refused" value={campaign.replies} />
                   <MiniMetric label="Done" value={campaign.completed} />
                 </div>
               </div>

@@ -117,6 +117,7 @@ function AccountSettings() {
   const [lastName, setLastName] = React.useState("");
 
   const [isSaving, setIsSaving] = React.useState(false);
+  const savingRef = React.useRef(false);
 
   React.useEffect(() => {
     const fetchUser = async () => {
@@ -145,6 +146,8 @@ function AccountSettings() {
   }, []);
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setIsSaving(true);
     try {
       const { createClient } = await import("@supabase/supabase-js");
@@ -170,6 +173,7 @@ function AccountSettings() {
     } catch (err) {
       alert(`Unexpected error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -221,8 +225,10 @@ function SecuritySettings() {
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
+  const savingRef = React.useRef(false);
 
   const handleSave = async () => {
+    if (savingRef.current) return;
     if (!newPassword || newPassword !== confirmPassword) {
       alert("New passwords do not match.");
       return;
@@ -232,6 +238,7 @@ function SecuritySettings() {
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       const { createClient } = await import("@supabase/supabase-js");
@@ -253,6 +260,7 @@ function SecuritySettings() {
     } catch (err) {
       alert(`Unexpected error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -303,6 +311,10 @@ function BillingSettings() {
   const [discountLoading, setDiscountLoading] = React.useState(false);
   const [cancelLoading, setCancelLoading] = React.useState(false);
   const [reactivateLoading, setReactivateLoading] = React.useState(false);
+  const subscribeRef = React.useRef(false);
+  const discountRef = React.useRef(false);
+  const cancelRef = React.useRef(false);
+  const reactivateRef = React.useRef(false);
   const [subscription, setSubscription] = React.useState<{
     plan: string;
     status: string;
@@ -352,6 +364,8 @@ function BillingSettings() {
   }, []);
 
   const handleApplyDiscount = async () => {
+    if (discountRef.current) return;
+    discountRef.current = true;
     setDiscountLoading(true);
     try {
       const { createClient } = await import("@supabase/supabase-js");
@@ -379,11 +393,14 @@ function BillingSettings() {
     } catch (err) {
       alert(`Error applying discount: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
+      discountRef.current = false;
       setDiscountLoading(false);
     }
   };
 
   const handleReactivate = async () => {
+    if (reactivateRef.current) return;
+    reactivateRef.current = true;
     setReactivateLoading(true);
     try {
       const { createClient } = await import("@supabase/supabase-js");
@@ -405,11 +422,14 @@ function BillingSettings() {
     } catch {
       alert("Network error. Please try again.");
     } finally {
+      reactivateRef.current = false;
       setReactivateLoading(false);
     }
   };
 
   const handleSubscribe = async () => {
+    if (subscribeRef.current) return;
+    subscribeRef.current = true;
     setSubscribeLoading(true);
     try {
       const { createClient } = await import("@supabase/supabase-js");
@@ -436,6 +456,7 @@ function BillingSettings() {
     } catch (err) {
       alert(`Failed to initiate checkout: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
+      subscribeRef.current = false;
       setSubscribeLoading(false);
     }
   };
@@ -532,7 +553,9 @@ function BillingSettings() {
               <p className="font-semibold text-[#120b2f]">Current subscription</p>
               <p className="mt-1 text-sm text-[#120b2f]/55">Your Solo plan is active at $19.99 per month.</p>
             </div>
-            <Button variant="secondary" onClick={handleSubscribe}>Manage billing</Button>
+            <Button variant="secondary" onClick={handleSubscribe} disabled={subscribeLoading}>
+              {subscribeLoading ? "Redirecting..." : "Manage billing"}
+            </Button>
           </div>
         </div>
       ) : null}
@@ -621,6 +644,8 @@ function BillingSettings() {
                   className="border border-rose-600 bg-rose-600 text-white hover:bg-rose-700"
                   disabled={cancelLoading}
                   onClick={async () => {
+                    if (cancelRef.current) return;
+                    cancelRef.current = true;
                     setCancelLoading(true);
                     try {
                       const { createClient } = await import("@supabase/supabase-js");
@@ -640,6 +665,7 @@ function BillingSettings() {
                     } catch {
                       alert("Network error. Please try again.");
                     } finally {
+                      cancelRef.current = false;
                       setCancelLoading(false);
                     }
                   }}

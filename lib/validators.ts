@@ -41,6 +41,7 @@ export const generatePlaybookSchema = z.object({
   urgency: z.string().optional().nullable(),
   tone: z.string().optional().nullable(),
   channel: z.string().optional().nullable(),
+  senderName: z.string().optional().nullable(),
   rules: z
     .object({
       followUpCount: z.number().int().min(1).max(8).optional(),
