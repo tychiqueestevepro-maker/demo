@@ -36,7 +36,7 @@ export async function addDataSource(data: DataSourceDraftInput) {
     data: {
       userId,
       title: data.title,
-      type: data.type === "Document" ? "DOCUMENT" : data.type === "Link" ? "CUSTOM_LINK" : data.type === "Note" ? "NOTE" : "DOCUMENT",
+      type: mapDataSourceType(data.type),
       url: data.url,
       description: data.description,
       fileSizeBytes,
@@ -48,6 +48,9 @@ export async function addDataSource(data: DataSourceDraftInput) {
   });
 
   revalidatePath("/app/data-directory");
+  if (data.targetId) {
+    revalidatePath(`/app/campaigns/${data.campaignId}/targets/${data.targetId}`);
+  }
   return newSource;
 }
 
@@ -59,4 +62,15 @@ export async function deleteDataSource(id: string) {
   });
 
   revalidatePath("/app/data-directory");
+}
+
+function mapDataSourceType(type: string) {
+  if (type === "Link") return "CUSTOM_LINK";
+  if (type === "Note") return "NOTE";
+  if (type === "Email thread") return "EMAIL_THREAD";
+  if (type === "Invoice") return "INVOICE";
+  if (type === "Contract") return "CONTRACT";
+  if (type === "Drive folder") return "GOOGLE_DRIVE";
+
+  return "DOCUMENT";
 }

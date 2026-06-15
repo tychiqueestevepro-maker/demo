@@ -9,6 +9,7 @@ import {
   TargetActionButton,
   TargetDataDirectory,
   TargetSequence,
+  type DirectoryDataSource,
 } from "@/components/product-components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
     include: {
       currentStage: true,
       activityLogs: { orderBy: { createdAt: "desc" } },
+      dataSources: { orderBy: { updatedAt: "desc" } },
     },
   });
 
@@ -101,6 +103,20 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
     title: log.type.replace(/_/g, " "),
     description: log.message,
     time: log.createdAt.toLocaleDateString(),
+  }));
+  const targetDataSources: DirectoryDataSource[] = targetRecord.dataSources.map((source) => ({
+    id: source.id,
+    title: source.title,
+    type: formatDataSourceType(source.type),
+    url: source.url || "",
+    description: source.description || "",
+    fileSizeBytes: source.fileSizeBytes,
+    campaignId: source.campaignId || id,
+    targetId: source.targetId || target.id,
+    linkedCampaign: campaign.name,
+    linkedTarget: target.name,
+    importance: source.importance,
+    lastChecked: source.lastCheckedAt ? source.lastCheckedAt.toLocaleDateString() : "Never",
   }));
 
   const hasConversationStarted = targetRecord.followUpCount > 0 || events.length > 0;
@@ -255,7 +271,7 @@ export default async function TargetDetailPage({ params }: TargetPageProps) {
             <h2 className="text-xl font-semibold tracking-tight text-[#120b2f]">Prospect notes and documents</h2>
             <p className="mt-1 text-sm leading-6 text-neutral-500">Notes, profile links, conversation details, campaign documents, invoices, contracts, and custom links attached to this prospect.</p>
           </div>
-          <TargetDataDirectory targetId={target.id} />
+          <TargetDataDirectory targetId={target.id} campaignId={id} initialSources={targetDataSources} />
         </div>
       </section>
     </div>
@@ -288,6 +304,18 @@ function mapPriority(priority: string): Priority {
   }
 
   return "Medium";
+}
+
+function formatDataSourceType(type: string) {
+  if (type === "CUSTOM_LINK") return "Link";
+  if (type === "EMAIL_THREAD") return "Email thread";
+  if (type === "GOOGLE_DRIVE") return "Drive folder";
+  if (type === "NOTE") return "Note";
+  if (type === "INVOICE") return "Invoice";
+  if (type === "CONTRACT") return "Contract";
+  if (type === "SPREADSHEET") return "Spreadsheet";
+
+  return "Document";
 }
 
 function LinkedinIcon(props: React.SVGProps<SVGSVGElement>) {

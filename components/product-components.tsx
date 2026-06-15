@@ -40,6 +40,7 @@ import {
   Home,
   Inbox,
   Layers3,
+  Loader2,
   LogOut,
   MailCheck,
   MapPinned,
@@ -3261,38 +3262,61 @@ function countCsvRows(csv: string) {
   return Math.max(lines.length - 1, 0);
 }
 
-export function TargetDataDirectory({ targetId }: { targetId: string }) {
-  const initialSources = getSourcesForTarget(targetId);
-  const [items, setItems] = React.useState<DataSource[]>(initialSources);
+export function TargetDataDirectory({
+  targetId,
+  campaignId,
+  initialSources = [],
+}: {
+  targetId: string;
+  campaignId: string;
+  initialSources?: DirectoryDataSource[];
+}) {
+  const [items, setItems] = React.useState<DirectoryDataSource[]>(initialSources);
   const [draft, setDraft] = React.useState<DirectoryDraft>({
     title: "",
     type: "Note",
     url: "",
     description: "",
   });
+  const [directoryError, setDirectoryError] = React.useState("");
+  const [isAdding, setIsAdding] = React.useState(false);
 
-  const addItem = () => {
+  const addItem = async () => {
     if (!draft.title.trim()) return;
-    setItems((current) => [
-      {
-        id: `target-item-${Date.now()}`,
-        title: draft.title.trim(),
-        type: draft.type,
-        url: draft.url.trim() || "#",
-        campaignId: "unknown",
-        targetId: targetId,
-        linkedCampaign: "Campaign",
-        linkedTarget: "Target",
-        description: draft.description.trim() || "Prospect-specific note, document, or link.",
-        importance: "Medium",
-        lastChecked: "Just now",
-      },
-      ...current,
-    ]);
-    setDraft({ title: "", type: "Note", url: "", description: "" });
+    setDirectoryError("");
+    setIsAdding(true);
+
+    try {
+      const source = draft.file
+        ? await uploadDataSourceFile({
+            draft,
+            campaignId,
+            targetId,
+          })
+        : await addDataSource({
+            title: draft.title.trim(),
+            type: draft.type,
+            url: draft.url.trim() || undefined,
+            description: draft.description.trim() || undefined,
+            fileSizeBytes: draft.fileSizeBytes ?? 0,
+            campaignId,
+            targetId,
+          });
+
+      setItems((current) => [
+        toDirectoryDataSource(source, { type: draft.type, campaignId, targetId }),
+        ...current,
+      ]);
+      setDraft({ title: "", type: "Note", url: "", description: "" });
+    } catch (err) {
+      setDirectoryError(err instanceof Error ? err.message : "Unable to attach this document.");
+    } finally {
+      setIsAdding(false);
+    }
   };
 
-  const deleteItem = (itemId: string) => {
+  const deleteItem = async (itemId: string) => {
+    await deleteDataSource(itemId);
     setItems((current) => current.filter((item) => item.id !== itemId));
   };
 
@@ -3305,36 +3329,16 @@ export function TargetDataDirectory({ targetId }: { targetId: string }) {
         title="Attach to prospect"
         buttonLabel="Add prospect item"
         placeholder="Profile link, call note, email thread, signed doc..."
+        error={directoryError}
+        onError={setDirectoryError}
+        isAdding={isAdding}
       />
-      {items.length ? (
-        <div className="flex flex-col gap-2">
-          {items.map((item) => (
-            <div key={item.id} className="flex items-start justify-between py-3 border-b border-violet-500/10 last:border-0">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-[#120b2f]">{item.title}</span>
-                  <Badge tone={item.missing ? "amber" : "blue"}>{item.type}</Badge>
-                </div>
-                {item.description && <p className="mt-1 text-sm text-[#120b2f]/60">{item.description}</p>}
-                <div className="mt-2 flex items-center gap-3 text-xs text-[#120b2f]/45">
-                  <span>Updated {item.lastChecked}</span>
-                  {item.url && item.url !== "#" && (
-                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-violet-600 hover:text-violet-700 transition">
-                      <ExternalLink className="h-3 w-3" />
-                      <span>Link</span>
-                    </a>
-                  )}
-                </div>
-              </div>
-              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-[#120b2f]/40 hover:text-rose-600 hover:bg-rose-50 ml-4" onClick={() => deleteItem(item.id)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyState title="No prospect notes attached" description="Add notes, profile links, conversation details, documents, invoices, or any information specific to this prospect." />
-      )}
+      <DirectoryItemList
+        items={items}
+        emptyTitle="No prospect notes attached"
+        emptyDescription="Add notes, profile links, conversation details, documents, invoices, or any information specific to this prospect."
+        onDelete={deleteItem}
+      />
     </div>
   );
 }
@@ -3398,6 +3402,7 @@ type DirectoryDraft = {
   url: string;
   description: string;
   fileSizeBytes?: number;
+  file?: File;
 };
 
 const emptyDirectoryDraft: DirectoryDraft = {
@@ -3409,7 +3414,7 @@ const emptyDirectoryDraft: DirectoryDraft = {
 
 const directoryItemTypes = ["Document", "Link", "Note", "Drive folder", "Email thread", "Invoice", "Contract"];
 
-type DirectoryDataSource = {
+export type DirectoryDataSource = {
   id: string; title: string; type: string; url: string; description: string; fileSizeBytes?: number; campaignId: string; targetId?: string; linkedCampaign?: string; linkedTarget?: string; missing?: boolean; importance: string; lastChecked: string;
 };
 
@@ -3480,28 +3485,26 @@ export function DataDirectoryWorkspace({
     setDirectoryError("");
 
     try {
-      const source = await addDataSource({
-        title: campaignDraft.title.trim(),
-        type: campaignDraft.type,
-        url: campaignDraft.url.trim() || undefined,
-        description: campaignDraft.description.trim() || undefined,
-        fileSizeBytes: campaignDraft.fileSizeBytes ?? 0,
-        campaignId: selectedCampaign.id,
-      });
+      const source = campaignDraft.file
+        ? await uploadDataSourceFile({
+            draft: campaignDraft,
+            campaignId: selectedCampaign.id,
+          })
+        : await addDataSource({
+            title: campaignDraft.title.trim(),
+            type: campaignDraft.type,
+            url: campaignDraft.url.trim() || undefined,
+            description: campaignDraft.description.trim() || undefined,
+            fileSizeBytes: campaignDraft.fileSizeBytes ?? 0,
+            campaignId: selectedCampaign.id,
+          });
 
       setItems((current) => [
-        {
-          id: source.id,
-          title: source.title,
+        toDirectoryDataSource(source, {
           type: campaignDraft.type,
-          url: source.url || "",
-          fileSizeBytes: source.fileSizeBytes || 0,
           campaignId: selectedCampaign.id,
           linkedCampaign: selectedCampaign.name,
-          description: source.description || "",
-          importance: "Medium",
-          lastChecked: "Just now",
-        },
+        }),
         ...current,
       ]);
       setCampaignDraft(emptyDirectoryDraft);
@@ -3515,31 +3518,30 @@ export function DataDirectoryWorkspace({
     setDirectoryError("");
 
     try {
-      const source = await addDataSource({
-        title: targetDraft.title.trim(),
-        type: targetDraft.type,
-        url: targetDraft.url.trim() || undefined,
-        description: targetDraft.description.trim() || undefined,
-        fileSizeBytes: targetDraft.fileSizeBytes ?? 0,
-        campaignId: selectedCampaign.id,
-        targetId: selectedTarget.id,
-      });
+      const source = targetDraft.file
+        ? await uploadDataSourceFile({
+            draft: targetDraft,
+            campaignId: selectedCampaign.id,
+            targetId: selectedTarget.id,
+          })
+        : await addDataSource({
+            title: targetDraft.title.trim(),
+            type: targetDraft.type,
+            url: targetDraft.url.trim() || undefined,
+            description: targetDraft.description.trim() || undefined,
+            fileSizeBytes: targetDraft.fileSizeBytes ?? 0,
+            campaignId: selectedCampaign.id,
+            targetId: selectedTarget.id,
+          });
 
       setItems((current) => [
-        {
-          id: source.id,
-          title: source.title,
+        toDirectoryDataSource(source, {
           type: targetDraft.type,
-          url: source.url || "",
-          fileSizeBytes: source.fileSizeBytes || 0,
           campaignId: selectedCampaign.id,
           targetId: selectedTarget.id,
           linkedCampaign: selectedCampaign.name,
           linkedTarget: selectedTarget.name,
-          description: source.description || "",
-          importance: "Medium",
-          lastChecked: "Just now",
-        },
+        }),
         ...current,
       ]);
       setTargetDraft(emptyDirectoryDraft);
@@ -3696,6 +3698,100 @@ export function DataDirectoryWorkspace({
   );
 }
 
+type StoredDataSource = {
+  id: string;
+  title: string;
+  type: string;
+  url: string | null;
+  description: string | null;
+  fileSizeBytes: number;
+  campaignId: string | null;
+  targetId: string | null;
+  importance: string;
+  lastCheckedAt?: string | Date | null;
+};
+
+async function uploadDataSourceFile({
+  draft,
+  campaignId,
+  targetId,
+}: {
+  draft: DirectoryDraft;
+  campaignId: string;
+  targetId?: string;
+}) {
+  if (!draft.file) {
+    throw new Error("Select a file to upload.");
+  }
+
+  const formData = new FormData();
+  formData.append("file", draft.file);
+  formData.append("title", draft.title.trim() || draft.file.name);
+  formData.append("type", draft.type);
+  formData.append("campaignId", campaignId);
+
+  if (targetId) {
+    formData.append("targetId", targetId);
+  }
+
+  if (draft.description.trim()) {
+    formData.append("description", draft.description.trim());
+  }
+
+  const response = await fetch("/api/data-sources/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const payload = await response.json().catch(() => null) as { data?: StoredDataSource; error?: string } | null;
+
+  if (!response.ok || !payload?.data) {
+    throw new Error(payload?.error ?? "Unable to upload this document.");
+  }
+
+  return payload.data;
+}
+
+function toDirectoryDataSource(
+  source: StoredDataSource,
+  fallback: {
+    type?: string;
+    campaignId?: string;
+    targetId?: string;
+    linkedCampaign?: string;
+    linkedTarget?: string;
+  } = {},
+): DirectoryDataSource {
+  return {
+    id: source.id,
+    title: source.title,
+    type: fallback.type ?? formatDataSourceType(source.type),
+    url: source.url || "",
+    fileSizeBytes: source.fileSizeBytes || 0,
+    campaignId: source.campaignId ?? fallback.campaignId ?? "",
+    targetId: source.targetId ?? fallback.targetId,
+    linkedCampaign: fallback.linkedCampaign,
+    linkedTarget: fallback.linkedTarget,
+    description: source.description || "",
+    importance: source.importance || "Medium",
+    lastChecked: "Just now",
+  };
+}
+
+function formatDataSourceType(type: string) {
+  const normalized = type.toUpperCase();
+
+  if (normalized === "CUSTOM_LINK") return "Link";
+  if (normalized === "EMAIL_THREAD") return "Email thread";
+  if (normalized === "GOOGLE_DRIVE") return "Drive folder";
+  if (normalized === "NOTE") return "Note";
+  if (normalized === "INVOICE") return "Invoice";
+  if (normalized === "CONTRACT") return "Contract";
+  if (normalized === "SPREADSHEET") return "Spreadsheet";
+
+  return "Document";
+}
+
 function DirectoryDraftForm({
   draft,
   onChange,
@@ -3706,16 +3802,18 @@ function DirectoryDraftForm({
   disabled = false,
   error,
   onError,
+  isAdding = false,
 }: {
   draft: DirectoryDraft;
   onChange: (draft: DirectoryDraft) => void;
-  onAdd: () => void;
+  onAdd: () => void | Promise<void>;
   title: string;
   buttonLabel: string;
   placeholder: string;
   disabled?: boolean;
   error?: string;
   onError?: (message: string) => void;
+  isAdding?: boolean;
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -3738,9 +3836,10 @@ function DirectoryDraftForm({
     onChange({
       title: draft.title.trim() || file.name,
       type: inferredType,
-      url: `Uploaded file: ${file.name}`,
+      url: "",
       description: draft.description.trim() || `${file.name} selected for upload.`,
       fileSizeBytes: file.size,
+      file,
     });
     onError?.("");
     event.target.value = "";
@@ -3793,12 +3892,12 @@ function DirectoryDraftForm({
       {draft.fileSizeBytes ? <p className="mt-2 text-xs font-medium text-neutral-500">Selected file: {formatBytes(draft.fileSizeBytes)} / {formatBytes(MAX_DOCUMENT_BYTES)} max</p> : null}
       {error ? <p className="mt-2 text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="mt-3 flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={disabled}>
+        <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={disabled || isAdding}>
           <Upload className="h-4 w-4" />
           Upload file
         </Button>
-        <Button type="button" onClick={onAdd} disabled={disabled || !draft.title.trim()}>
-          <Plus className="h-4 w-4" />
+        <Button type="button" onClick={onAdd} disabled={disabled || isAdding || !draft.title.trim()}>
+          {isAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           {buttonLabel}
         </Button>
       </div>
@@ -3815,10 +3914,10 @@ function DirectoryItemList({
   items: DirectoryDataSource[];
   emptyTitle: string;
   emptyDescription: string;
-  onDelete: (itemId: string) => void;
+  onDelete: (itemId: string) => void | Promise<void>;
 }) {
   return items.length ? (
-    <div className="overflow-hidden rounded-xl bg-[#0a0a0a] border border-[#1a1a1a] shadow-inner">
+    <div className="overflow-hidden rounded-xl border border-violet-500/15 bg-white shadow-sm">
       {items.map((item) => <DirectoryEditableItem key={item.id} item={item} onDelete={onDelete} />)}
     </div>
   ) : (
@@ -3829,63 +3928,75 @@ function DirectoryItemList({
   );
 }
 
-function DirectoryEditableItem({ item, onDelete }: { item: DirectoryDataSource; onDelete: (itemId: string) => void }) {
+function DirectoryEditableItem({ item, onDelete }: { item: DirectoryDataSource; onDelete: (itemId: string) => void | Promise<void> }) {
   const titleLower = item.title.toLowerCase();
   
   let Icon = FileText;
-  let iconColor = "text-neutral-400";
-  let bgColor = "bg-[#202020]";
-  let size = "14,4 KB";
+  let iconColor = "text-violet-600";
+  let bgColor = "bg-violet-50";
+  const size = item.fileSizeBytes && item.fileSizeBytes > 0 ? formatBytes(item.fileSizeBytes) : "";
 
   if (titleLower.endsWith(".pdf")) {
     Icon = FileText;
-    iconColor = "text-rose-500";
-    size = "119 KB";
+    iconColor = "text-rose-600";
+    bgColor = "bg-rose-50";
   } else if (titleLower.endsWith(".csv")) {
     Icon = FileSpreadsheet;
-    iconColor = "text-sky-400";
-    size = "20,9 KB";
+    iconColor = "text-sky-600";
+    bgColor = "bg-sky-50";
   } else if (titleLower.endsWith(".xlsx") || titleLower.endsWith(".xls")) {
     Icon = FileSpreadsheet;
-    iconColor = "text-emerald-500";
-    size = "14,4 KB";
+    iconColor = "text-emerald-600";
+    bgColor = "bg-emerald-50";
   } else if (titleLower.endsWith(".png") || titleLower.endsWith(".jpg") || titleLower.endsWith(".jpeg")) {
     Icon = FileImage;
-    iconColor = "text-neutral-300";
-    bgColor = "bg-white";
-    size = "70,0 KB";
+    iconColor = "text-amber-600";
+    bgColor = "bg-amber-50";
   } else {
     Icon = FileText;
-    iconColor = "text-violet-400";
-    size = "12 KB";
+    iconColor = "text-violet-600";
+    bgColor = "bg-violet-50";
   }
 
-  // Derive a pseudo "day" based on the length to add variety like the screenshot
-  const days = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
-  const day = days[item.title.length % 7];
+  const viewHref = getDirectoryItemHref(item);
+  const formatLabel = getDirectoryFormatLabel(item);
 
   return (
-    <article className="group flex items-center justify-between gap-4 bg-[#0a0a0a] p-3 pl-4 pr-5 text-sm text-neutral-300 transition-colors hover:bg-[#141414] border-b border-[#1a1a1a] last:border-0">
+    <article className="group flex items-center justify-between gap-4 border-b border-violet-500/10 bg-white p-3 pl-4 pr-5 text-sm text-neutral-600 transition-colors last:border-0 hover:bg-violet-50/50">
       <div className="flex flex-1 min-w-0 items-center gap-4">
-        <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", bgColor)}>
-          {titleLower.endsWith(".png") || titleLower.endsWith(".jpg") || titleLower.endsWith(".jpeg") ? (
-             null // If bg is white, it acts as the white square icon from the screenshot
-          ) : (
-            <Icon className={cn("h-4 w-4", iconColor)} strokeWidth={2.5} />
-          )}
+        <div className={cn("relative grid h-11 w-11 shrink-0 place-items-center rounded-xl", bgColor)}>
+          <Icon className={cn("h-4 w-4", iconColor)} strokeWidth={2.5} />
+          <span className={cn(
+            "absolute -bottom-1 left-1/2 max-w-10 -translate-x-1/2 rounded px-1.5 py-0.5 text-[9px] font-bold leading-none text-white shadow-sm",
+            getDirectoryFormatBadgeClass(formatLabel),
+          )}>
+            {formatLabel}
+          </span>
         </div>
-        <p className="truncate text-[13px] font-medium text-neutral-200">{item.title}</p>
+        <p className="truncate text-[13px] font-semibold text-[#120b2f]">{item.title}</p>
       </div>
       
-      <div className="flex items-center gap-6 text-neutral-400 text-[13px]">
-        <span className="hidden sm:block w-20 text-left capitalize">{day}</span>
-        <span className="w-16 text-right">{size}</span>
+      <div className="flex items-center gap-6 text-[13px] text-neutral-500">
+        {size ? <span className="w-16 text-right">{size}</span> : null}
+        {viewHref ? (
+          <a
+            href={viewHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-violet-100 hover:text-violet-700"
+            aria-label={`View ${item.title}`}
+            title={`View ${item.title}`}
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        ) : null}
         <Button 
           type="button" 
           size="icon" 
           variant="ghost" 
-          className="h-8 w-8 ml-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-neutral-800 text-neutral-500 hover:text-rose-500" 
+          className="ml-2 h-8 w-8 border border-rose-100 bg-rose-50 text-rose-600 transition-colors hover:bg-rose-100 hover:text-rose-700"
           aria-label={`Delete ${item.title}`} 
+          title={`Delete ${item.title}`}
           onClick={() => onDelete(item.id)}
         >
           <Trash2 className="h-4 w-4" />
@@ -3893,6 +4004,42 @@ function DirectoryEditableItem({ item, onDelete }: { item: DirectoryDataSource; 
       </div>
     </article>
   );
+}
+
+function getDirectoryFormatLabel(item: DirectoryDataSource) {
+  const extension = item.title.split(".").pop()?.toUpperCase();
+  const knownExtensions = ["PDF", "DOC", "DOCX", "XLS", "XLSX", "CSV", "PNG", "JPG", "JPEG", "TXT"];
+
+  if (extension && knownExtensions.includes(extension)) {
+    return extension === "JPEG" ? "JPG" : extension;
+  }
+
+  if (item.type === "Link" || item.type === "Drive folder") return "LINK";
+  if (item.type === "Note") return "NOTE";
+  if (item.type === "Email thread") return "MAIL";
+  if (item.type === "Invoice") return "PDF";
+  if (item.type === "Contract") return "DOC";
+
+  return "DOC";
+}
+
+function getDirectoryFormatBadgeClass(label: string) {
+  if (label === "PDF") return "bg-rose-600";
+  if (label === "CSV" || label === "XLS" || label === "XLSX") return "bg-emerald-600";
+  if (label === "PNG" || label === "JPG") return "bg-amber-600";
+  if (label === "LINK") return "bg-sky-600";
+  if (label === "MAIL") return "bg-blue-600";
+  if (label === "NOTE") return "bg-violet-600";
+
+  return "bg-neutral-700";
+}
+
+function getDirectoryItemHref(item: DirectoryDataSource) {
+  if (!item.url) return "";
+  if (item.url.startsWith("storage://")) return `/api/data-sources/${item.id}/download`;
+  if (item.url.startsWith("http://") || item.url.startsWith("https://")) return item.url;
+
+  return "";
 }
 
 export function AuthPanel({ mode }: { mode: "login" | "signup" }) {

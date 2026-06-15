@@ -698,6 +698,7 @@ Required:
 | DATABASE_URL | Supabase Postgres connection string for Prisma. Use the Supavisor session pooler string from the Supabase dashboard. |
 | NEXT_PUBLIC_SUPABASE_URL | Supabase project URL. |
 | NEXT_PUBLIC_SUPABASE_ANON_KEY | Supabase anon key used to validate Auth JWTs server-side. |
+| SUPABASE_SERVICE_ROLE_KEY | Server-only Supabase service role key used by the private document upload/download system. Add it to `.env` locally and to Vercel Environment Variables; never prefix it with `NEXT_PUBLIC_`. |
 | OPENAI_API_KEY | OpenAI API key for AI routes. |
 | OPENAI_MODEL | OpenAI model, defaults to `gpt-5.5` in `.env.example`. |
 | DEV_USER_ID | Optional local fallback user id when no Supabase bearer token is present. |

@@ -23,49 +23,7 @@ export async function requireUser(request: NextRequest): Promise<AuthContext> {
   const accessToken = bearerToken ?? cookieToken;
 
   if (accessToken) {
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      throw new ApiError(500, "Supabase environment variables are required for authentication.");
-    }
-
-    const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(accessToken);
-
-    if (error || !user?.id || !user.email) {
-      throw new ApiError(401, "Invalid Supabase session.");
-    }
-
-    // Fast path: just check if user exists (no upsert on every request)
-    const existingUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { id: true },
-    });
-
-    // Only create if user doesn't exist yet (first API call after signup)
-    if (!existingUser) {
-      try {
-        await prisma.user.create({
-          data: {
-            id: user.id,
-            email: user.email,
-            name: getSupabaseDisplayName(user.user_metadata),
-            avatarUrl: getSupabaseAvatarUrl(user.user_metadata),
-            subscription: {
-              create: {
-                status: "trialing",
-                trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-              },
-            },
-          },
-        });
-      } catch {
-        // User was created concurrently, ignore
-      }
-    }
-
-    return { userId: user.id };
+    return authenticateSupabaseToken(accessToken);
   }
 
   const envUserId = process.env.DEV_USER_ID;
@@ -82,6 +40,64 @@ export async function requireUser(request: NextRequest): Promise<AuthContext> {
   }
 
   throw new ApiError(401, "Authentication required.");
+}
+
+export async function requireAuthenticatedUser(request: NextRequest): Promise<AuthContext> {
+  const bearerToken = getBearerToken(request);
+  const cookieToken = getSupabaseCookieToken(request);
+  const accessToken = bearerToken ?? cookieToken;
+
+  if (!accessToken) {
+    throw new ApiError(401, "Authentication required.");
+  }
+
+  return authenticateSupabaseToken(accessToken);
+}
+
+async function authenticateSupabaseToken(accessToken: string): Promise<AuthContext> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    throw new ApiError(500, "Supabase environment variables are required for authentication.");
+  }
+
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser(accessToken);
+
+  if (error || !user?.id || !user.email) {
+    throw new ApiError(401, "Invalid Supabase session.");
+  }
+
+  // Fast path: just check if user exists (no upsert on every request)
+  const existingUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { id: true },
+  });
+
+  // Only create if user doesn't exist yet (first API call after signup)
+  if (!existingUser) {
+    try {
+      await prisma.user.create({
+        data: {
+          id: user.id,
+          email: user.email,
+          name: getSupabaseDisplayName(user.user_metadata),
+          avatarUrl: getSupabaseAvatarUrl(user.user_metadata),
+          subscription: {
+            create: {
+              status: "trialing",
+              trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+            },
+          },
+        },
+      });
+    } catch {
+      // User was created concurrently, ignore
+    }
+  }
+
+  return { userId: user.id };
 }
 
 function getBearerToken(request: NextRequest) {
