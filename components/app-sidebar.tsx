@@ -10,6 +10,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Database,
+  HelpCircle,
   Home,
   Layers3,
   LogOut,
@@ -42,7 +43,10 @@ const navSections = [
   },
   {
     title: "Workspace",
-    items: [{ label: "Settings", href: "/app/settings", icon: Settings }],
+    items: [
+      { label: "Settings", href: "/app/settings", icon: Settings },
+      { label: "Help Center", href: "https://wa.me/33665950786", icon: HelpCircle },
+    ],
   },
 ];
 
@@ -135,6 +139,12 @@ export function AppSidebar({
                     <React.Fragment key={item.href}>
                       <Link
                         href={item.href}
+                        target={item.href.startsWith("http") ? "_blank" : undefined}
+                        onClick={() => {
+                          if (item.label === "Help Center") {
+                            alert("Replies under 10 mins");
+                          }
+                        }}
                         className={cn(
                           "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/70 transition",
                           active && "bg-white text-violet-800 shadow-lg shadow-violet-950/15",
