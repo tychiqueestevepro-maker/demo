@@ -291,6 +291,16 @@ export default function HomePage() {
           </Link>
         </div>
       </section>
+
+      <footer className="border-t border-violet-500/15 py-8 text-center text-sm text-[#332252]/60">
+        <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-4 sm:flex-row">
+          <p>© 2026 Verytis. All rights reserved.</p>
+          <div className="flex gap-6">
+            <Link href="/terms" className="transition-colors hover:text-[#332252]">Terms of Service</Link>
+            <Link href="/privacy" className="transition-colors hover:text-[#332252]">Privacy Policy</Link>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }
