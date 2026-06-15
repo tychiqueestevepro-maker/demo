@@ -21,6 +21,8 @@ export function handleApiError(error: unknown) {
   }
 
   console.error(error);
-  return NextResponse.json({ error: "Unexpected server error." }, { status: 500 });
+  const message = error instanceof Error ? error.message : "Unexpected server error.";
+  const stack = error instanceof Error ? error.stack : undefined;
+  return NextResponse.json({ error: message, stack }, { status: 500 });
 }
 

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { CampaignControls } from "@/components/campaign-controls";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { personalizeMessage } from "@/lib/message-template";
 
 type CampaignDetailProps = {
   params: Promise<{ id: string }>;
@@ -32,7 +33,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
   const campaignRecord = await prisma.campaign.findUnique({
     where: { id, userId },
     include: {
-      targets: { orderBy: { createdAt: "desc" } },
+      targets: { include: { currentStage: true }, orderBy: { createdAt: "desc" } },
       followUps: {
         include: { target: true },
         orderBy: { dueAt: "asc" },
@@ -54,7 +55,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
   const replies = campaignRecord.targets.filter((t) => t.status === "REPLIED").length;
   const blocked = campaignRecord.targets.filter((t) => t.status === "STOPPED" || t.status === "NOT_INTERESTED").length;
   const followUpsDue = campaignRecord.followUps.filter((f) => f.status === "DUE" || f.status === "PENDING").length;
-  const progress = totalTargets > 0 ? Math.round((completed / totalTargets) * 100) : 0;
+  const progress = totalTargets > 0 ? Math.round(((completed + blocked) / totalTargets) * 100) : 0;
 
   const summary = {
     situation: campaignRecord.aiSummary || "Campaign created. Add prospects to begin.",
@@ -70,6 +71,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
   const status =
     campaignRecord.status === "DRAFT" ? "Review" :
     campaignRecord.status === "ACTIVE" ? "Active" :
+    campaignRecord.status === "PAUSED" ? "Paused" :
     campaignRecord.status === "COMPLETED" ? "Completed" : "Waiting";
 
   const ownerName = campaignRecord.user.name || campaignRecord.user.email || "Unknown";
@@ -87,9 +89,17 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
     note: t.notes || "",
     status: t.status,
     priority: t.priority,
-    currentStep: "",
+    step: t.followUpCount,
+    currentStep: t.currentStage?.name || "Initial message",
+    message: personalizeMessage(t.currentStage?.messageBody || "Hi {{firstName}}, quick note about {{company}}.", {
+      name: t.name,
+      company: t.company,
+      role: t.role,
+      email: t.email,
+      notes: t.notes,
+    }),
     lastAction: t.lastActionAt ? format(new Date(t.lastActionAt), "MMM d") : "—",
-    nextAction: t.aiRecommendedAction || "—",
+    nextAction: t.aiRecommendedAction || (t.followUpCount === 0 ? "Send initial message" : "Review next follow-up"),
     due: t.nextActionAt ? format(new Date(t.nextActionAt), "MMM d") : "—",
     sourceCount: 0,
     summary: {
@@ -100,7 +110,13 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
       next: t.aiRecommendedAction || "",
       sources: [],
     },
-  }));
+  })).sort((a, b) => {
+    const isADone = ["COMPLETED", "INTERESTED", "STOPPED", "NOT_INTERESTED"].includes(a.status);
+    const isBDone = ["COMPLETED", "INTERESTED", "STOPPED", "NOT_INTERESTED"].includes(b.status);
+    if (isADone && !isBDone) return 1;
+    if (!isADone && isBDone) return -1;
+    return 0;
+  });
 
   const playbookStagesData = (campaignRecord.playbooks[0]?.stages ?? []).map((s) => ({
     id: s.id,
@@ -118,6 +134,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
     type: d.type,
     url: d.url || "",
     description: d.description || "",
+    fileSizeBytes: d.fileSizeBytes,
     campaignId: d.campaignId || id,
     targetId: d.targetId || undefined,
     linkedCampaign: campaignRecord.name,
@@ -199,7 +216,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
         <StatCard label="Replied" value={String(replies)} detail="Replies to handle" tone="text-emerald-700" />
         <StatCard label="Follow-ups due" value={String(followUpsDue)} detail="Manual actions" tone="text-violet-700" />
         <StatCard label="Completed" value={String(completed)} detail="Closed targets" tone="text-blue-700" />
-        <StatCard label="Blocked" value={String(blocked)} detail="Need attention" tone="text-rose-700" />
+        <StatCard label="Refused" value={String(blocked)} detail="Target rejected" tone="text-rose-700" />
       </div>
       <CampaignTabs
         campaignId={campaignRecord.id}

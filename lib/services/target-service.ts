@@ -2,10 +2,12 @@ import { parse } from "csv-parse/sync";
 import { addDays } from "date-fns";
 import { ActivityType, FollowUpStatus, TargetStatus } from "@prisma/client";
 
+import { MAX_PROSPECTS_PER_CAMPAIGN } from "@/lib/account-limits";
 import { ApiError, assertOwned } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { createActivityLog } from "@/lib/services/activity-service";
 import type { TargetCreateInput, TargetPatchInput } from "@/lib/validators";
+import { normalizeCsvRecord } from "@/lib/csv-utils";
 
 export async function listTargets(userId: string, campaignId: string) {
   assertOwned(await prisma.campaign.findUnique({ where: { id: campaignId } }), userId);
@@ -19,18 +21,45 @@ export async function listTargets(userId: string, campaignId: string) {
 export async function addTargets(userId: string, campaignId: string, input: TargetCreateInput | TargetCreateInput[]) {
   const campaign = assertOwned(await prisma.campaign.findUnique({ where: { id: campaignId } }), userId);
   const targets = Array.isArray(input) ? input : [input];
+  const playbook = await prisma.campaignPlaybook.findFirst({
+    where: { userId, campaignId },
+    include: { stages: { orderBy: { order: "asc" } } },
+  });
+  const initialStage = playbook?.stages[0];
 
-  const created = await prisma.$transaction(
-    targets.map((target) =>
-      prisma.campaignTarget.create({
-        data: {
-          ...target,
+  const created = await prisma.$transaction(async (tx) => {
+    const createdTargets = await tx.campaignTarget.createManyAndReturn({
+      data: targets.map(target => ({
+        ...target,
+        userId,
+        campaignId,
+        currentStageId: target.currentStageId ?? initialStage?.id,
+        followUpCount: 0,
+        nextActionAt: target.nextActionAt ?? new Date(),
+      }))
+    });
+
+    if (initialStage && createdTargets.length > 0) {
+      await tx.followUp.createMany({
+        data: createdTargets.map(createdTarget => ({
           userId,
           campaignId,
-        },
-      }),
-    ),
-  );
+          targetId: createdTarget.id,
+          stageId: initialStage.id,
+          status: FollowUpStatus.PENDING,
+          dueAt: new Date(),
+          messageSubject: initialStage.messageSubject,
+          messageBody: initialStage.messageBody,
+          reason: initialStage.name,
+          priority: createdTarget.priority,
+        }))
+      });
+    }
+
+    return createdTargets;
+  }, {
+    timeout: 30000, // 30 seconds to allow large CSV imports over slow network
+  });
 
   await createActivityLog({
     userId,
@@ -43,25 +72,40 @@ export async function addTargets(userId: string, campaignId: string, input: Targ
 }
 
 export async function importTargetsFromCsv(userId: string, campaignId: string, csv: string) {
-  const records = parse(csv, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  }) as Record<string, string>[];
+  const existingCount = await prisma.campaignTarget.count({ where: { userId, campaignId } });
+  let records: Record<string, string>[];
+  try {
+    records = parse(csv, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      relax_column_count: true,
+    }) as Record<string, string>[];
+  } catch (error) {
+    throw new ApiError(400, "Invalid CSV format. Please check your data and try again.");
+  }
 
-  const targets = records.map((record) => ({
-    name: record.name,
-    company: record.company || null,
-    role: record.role || null,
-    email: record.email || null,
-    phone: record.phone || null,
-    profileUrl: record.profileUrl || record.profile_url || null,
-    customChannelUrl: record.customChannelUrl || record.custom_channel_url || null,
-    notes: record.note || record.notes || null,
-  }));
+  const targets = records
+    .map(normalizeCsvRecord)
+    .filter((target) => target.name);
+
+  if (targets.length === 0) {
+    throw new ApiError(400, "No valid prospects found. Add at least a name column.");
+  }
+
+  if (records.length > MAX_PROSPECTS_PER_CAMPAIGN) {
+    throw new ApiError(400, `Import limit exceeded. Upload at most ${MAX_PROSPECTS_PER_CAMPAIGN} prospect rows at once.`);
+  }
+
+  if (existingCount + targets.length > MAX_PROSPECTS_PER_CAMPAIGN) {
+    const remaining = Math.max(MAX_PROSPECTS_PER_CAMPAIGN - existingCount, 0);
+    throw new ApiError(400, `Campaign prospect limit exceeded. This campaign can import ${remaining} more prospect(s).`);
+  }
 
   return addTargets(userId, campaignId, targets);
 }
+
+
 
 export async function getTarget(userId: string, targetId: string) {
   return assertOwned(
@@ -156,24 +200,49 @@ export async function markMessageSent(userId: string, targetId: string, followUp
     ? assertOwned(await prisma.followUp.findUnique({ where: { id: followUpId } }), userId)
     : await prisma.followUp.findFirst({ where: { userId, targetId, status: { in: [FollowUpStatus.DUE, FollowUpStatus.COPIED, FollowUpStatus.PENDING] } }, orderBy: { dueAt: "asc" } });
 
-  if (!followUp) {
-    throw new ApiError(404, "No follow-up found.");
-  }
-
-  const updated = await prisma.followUp.update({
-    where: { id: followUp.id },
-    data: { status: FollowUpStatus.SENT, sentAt: new Date() },
+  const playbook = await prisma.campaignPlaybook.findFirst({
+    where: { userId, campaignId: target.campaignId },
+    include: { stages: { orderBy: { order: "asc" } } },
   });
+  const nextStep = target.followUpCount + 1;
+  const nextStage = playbook?.stages[nextStep];
+  const nextDueAt = addDays(new Date(), nextStage?.delayDays && nextStage.delayDays > 0 ? nextStage.delayDays : 2);
 
-  await prisma.campaignTarget.update({
+  const updated = followUp
+    ? await prisma.followUp.update({
+        where: { id: followUp.id },
+        data: { status: FollowUpStatus.SENT, sentAt: new Date(), completedAt: new Date() },
+      })
+    : null;
+
+  const updatedTarget = await prisma.campaignTarget.update({
     where: { id: targetId },
     data: {
       status: target.followUpCount === 0 ? TargetStatus.INITIAL_SENT : TargetStatus.FOLLOW_UP_SENT,
-      followUpCount: { increment: 1 },
+      followUpCount: nextStep,
+      currentStageId: nextStage?.id ?? target.currentStageId,
       lastActionAt: new Date(),
-      nextActionAt: addDays(new Date(), 3),
+      nextActionAt: nextStage ? nextDueAt : null,
+      aiRecommendedAction: nextStage ? `Wait until next follow-up is due, then review ${nextStage.name}.` : "No more playbook steps. Validate or reject this prospect.",
     },
   });
+
+  if (nextStage) {
+    await prisma.followUp.create({
+      data: {
+        userId,
+        campaignId: target.campaignId,
+        targetId,
+        stageId: nextStage.id,
+        status: FollowUpStatus.PENDING,
+        dueAt: nextDueAt,
+        messageSubject: nextStage.messageSubject,
+        messageBody: nextStage.messageBody,
+        reason: nextStage.name,
+        priority: target.priority,
+      },
+    });
+  }
 
   await createActivityLog({
     userId,
@@ -183,7 +252,7 @@ export async function markMessageSent(userId: string, targetId: string, followUp
     message: "Message was marked sent manually by the user.",
   });
 
-  return updated;
+  return updated ?? updatedTarget;
 }
 
 export async function markTargetReplied(userId: string, targetId: string) {
@@ -240,3 +309,53 @@ export async function advanceTargetStage(userId: string, targetId: string, event
   return getTarget(userId, targetId);
 }
 
+export async function advanceDueTargetSteps(now = new Date()) {
+  const dueFollowUps = await prisma.followUp.findMany({
+    where: {
+      status: FollowUpStatus.PENDING,
+      dueAt: { lte: now },
+      target: {
+        status: {
+          notIn: [TargetStatus.REPLIED, TargetStatus.INTERESTED, TargetStatus.COMPLETED, TargetStatus.STOPPED, TargetStatus.ARCHIVED, TargetStatus.NOT_INTERESTED],
+        },
+      },
+    },
+    include: { target: true, stage: true },
+  });
+
+  const advanced = [];
+
+  for (const followUp of dueFollowUps) {
+    const nextStep = followUp.target.followUpCount + 1;
+
+    const [, target] = await prisma.$transaction([
+      prisma.followUp.update({
+        where: { id: followUp.id },
+        data: { status: FollowUpStatus.DUE },
+      }),
+      prisma.campaignTarget.update({
+        where: { id: followUp.targetId },
+        data: {
+          status: TargetStatus.FOLLOW_UP_DUE,
+          followUpCount: nextStep,
+          currentStageId: followUp.stageId,
+          nextActionAt: followUp.dueAt,
+          aiRecommendedAction: followUp.stage ? `Review and send ${followUp.stage.name}.` : "Review and send the next follow-up.",
+        },
+      }),
+      prisma.activityLog.create({
+        data: {
+          userId: followUp.userId,
+          campaignId: followUp.campaignId,
+          targetId: followUp.targetId,
+          type: ActivityType.TARGET_UPDATED,
+          message: `${followUp.target.name} moved to step ${nextStep}.`,
+        },
+      }),
+    ]);
+
+    advanced.push(target);
+  }
+
+  return advanced;
+}

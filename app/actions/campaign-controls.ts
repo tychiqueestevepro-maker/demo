@@ -16,8 +16,7 @@ export async function pauseCampaignAction(campaignId: string) {
 
   if (!campaign) throw new Error("Campaign not found");
 
-  // Toggle: ACTIVE → PAUSED, anything else → ACTIVE
-  const newStatus = campaign.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
+  const newStatus = campaign.status === "PAUSED" ? "ACTIVE" : "PAUSED";
 
   await prisma.campaign.update({
     where: { id: campaignId },

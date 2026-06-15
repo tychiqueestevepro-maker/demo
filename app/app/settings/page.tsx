@@ -1,14 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { CreditCard, Save, ShieldCheck, UserRound } from "lucide-react";
+import { CreditCard, HardDrive, Save, ShieldCheck, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getAccountStorageAction } from "@/app/actions/account-storage";
 import { cn } from "@/lib/utils";
 
-const settingsTabs = ["Account", "Security", "Billing"] as const;
+const settingsTabs = ["Account", "Security", "Storage", "Billing"] as const;
 
 type SettingsTab = (typeof settingsTabs)[number];
 
@@ -39,9 +40,74 @@ export default function SettingsPage() {
       <main className="mx-auto mt-8 max-w-6xl">
         {activeTab === "Account" ? <AccountSettings /> : null}
         {activeTab === "Security" ? <SecuritySettings /> : null}
+        {activeTab === "Storage" ? <StorageSettings /> : null}
         {activeTab === "Billing" ? <BillingSettings /> : null}
       </main>
     </div>
+  );
+}
+
+function StorageSettings() {
+  const [usage, setUsage] = React.useState<{
+    usedBytes: number;
+    limitBytes: number;
+    remainingBytes: number;
+    documentCount: number;
+    usedLabel: string;
+    limitLabel: string;
+    remainingLabel: string;
+    percentUsed: number;
+    limits: {
+      prospectsPerPage: number;
+      prospectsPerCampaign: number;
+      documentLabel: string;
+    };
+  } | null>(null);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    const fetchStorage = async () => {
+      try {
+        setUsage(await getAccountStorageAction());
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unable to load storage usage.");
+      }
+    };
+
+    fetchStorage();
+  }, []);
+
+  return (
+    <SettingsCard
+      icon={<HardDrive className="h-5 w-5" />}
+      title="Storage Settings"
+      description="Storage and import limits are applied separately to each account."
+      showSave={false}
+    >
+      {error ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{error}</p> : null}
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <BillingMetric label="Account storage" value={usage ? usage.usedLabel : "Loading"} detail={usage ? `of ${usage.limitLabel} used` : "per account"} />
+        <BillingMetric label="Remaining" value={usage ? usage.remainingLabel : "Loading"} detail="available for this account" />
+        <BillingMetric label="Documents" value={usage ? String(usage.documentCount) : "Loading"} detail="tracked in this account" />
+      </div>
+
+      <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <span className="font-semibold text-[#120b2f]">Storage used</span>
+          <span className="font-semibold text-violet-700">{usage ? usage.percentUsed : 0}%</span>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-100">
+          <div className="h-full rounded-full bg-violet-600" style={{ width: `${Math.min(usage?.percentUsed ?? 0, 100)}%` }} />
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4 md:grid-cols-3">
+        <LimitCard label="Document upload" value={usage?.limits.documentLabel ?? "25 MB"} detail="maximum per imported document" />
+        <LimitCard label="Prospects per campaign" value={String(usage?.limits.prospectsPerCampaign ?? 500)} detail="CSV imports stop at this campaign limit" />
+        <LimitCard label="Prospects per page" value={String(usage?.limits.prospectsPerPage ?? 30)} detail="target lists are paginated for readability" />
+      </div>
+    </SettingsCard>
   );
 }
 
@@ -101,8 +167,8 @@ function AccountSettings() {
       } else {
         alert("Profile updated successfully. Refresh the page to see changes in the sidebar.");
       }
-    } catch (err: any) {
-      alert(`Unexpected error: ${err.message}`);
+    } catch (err) {
+      alert(`Unexpected error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setIsSaving(false);
     }
@@ -184,8 +250,8 @@ function SecuritySettings() {
         setNewPassword("");
         setConfirmPassword("");
       }
-    } catch (err: any) {
-      alert(`Unexpected error: ${err.message}`);
+    } catch (err) {
+      alert(`Unexpected error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setIsSaving(false);
     }
@@ -310,8 +376,8 @@ function BillingSettings() {
         const errData = await response.json();
         alert(errData.error || "Failed to apply discount.");
       }
-    } catch (err: any) {
-      alert("Error applying discount: " + err.message);
+    } catch (err) {
+      alert(`Error applying discount: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setDiscountLoading(false);
     }
@@ -367,8 +433,8 @@ function BillingSettings() {
       } else {
         alert(data.error || "An unknown error occurred.");
       }
-    } catch (err: any) {
-      alert("Failed to initiate checkout: " + err.message);
+    } catch (err) {
+      alert(`Failed to initiate checkout: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setSubscribeLoading(false);
     }
@@ -611,6 +677,16 @@ function BillingMetric({ label, value, detail }: { label: string; value: string;
   return (
     <div className="rounded-xl border border-violet-500/15 bg-violet-50/60 p-4">
       <p className="text-xs font-bold uppercase tracking-wide text-violet-900/50">{label}</p>
+      <p className="mt-2 text-2xl font-bold text-[#120b2f]">{value}</p>
+      <p className="mt-1 text-sm text-[#120b2f]/50">{detail}</p>
+    </div>
+  );
+}
+
+function LimitCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">{label}</p>
       <p className="mt-2 text-2xl font-bold text-[#120b2f]">{value}</p>
       <p className="mt-1 text-sm text-[#120b2f]/50">{detail}</p>
     </div>

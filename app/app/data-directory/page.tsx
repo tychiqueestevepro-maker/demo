@@ -1,6 +1,7 @@
 import { DataDirectoryWorkspace, PageHeader } from "@/components/product-components";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import type { CampaignStatus, Priority, TargetStatus } from "@/lib/mock-data";
 import { redirect } from "next/navigation";
 
 export default async function DataDirectoryPage() {
@@ -19,7 +20,7 @@ export default async function DataDirectoryPage() {
   const campaignsData = campaigns.map(c => ({
     id: c.id,
     name: c.name,
-    status: c.status,
+    status: mapCampaignStatus(c.status),
     type: c.type,
     goal: c.goal,
     targets: targets.filter(t => t.campaignId === c.id).length,
@@ -29,6 +30,10 @@ export default async function DataDirectoryPage() {
     id: t.id,
     campaignId: t.campaignId,
     name: t.name,
+    role: t.role || "",
+    company: t.company || "",
+    status: mapTargetStatus(t.status),
+    priority: mapPriority(t.priority),
   }));
 
   const dataSourcesData = dataSources.map(d => ({
@@ -37,6 +42,7 @@ export default async function DataDirectoryPage() {
     type: d.type,
     url: d.url || "",
     description: d.description || "",
+    fileSizeBytes: d.fileSizeBytes,
     campaignId: d.campaignId || "",
     targetId: d.targetId || undefined,
     linkedCampaign: campaigns.find(c => c.id === d.campaignId)?.name,
@@ -60,4 +66,27 @@ export default async function DataDirectoryPage() {
       />
     </>
   );
+}
+
+function mapCampaignStatus(status: string): CampaignStatus {
+  if (status === "ACTIVE") return "Active";
+  if (status === "PAUSED") return "Paused";
+  if (status === "COMPLETED") return "Completed";
+  if (status === "BLOCKED") return "Blocked";
+  if (status === "DRAFT") return "Review";
+  return "Waiting";
+}
+
+function mapTargetStatus(status: string): TargetStatus {
+  if (status === "REPLIED") return "Replied";
+  if (status === "STOPPED" || status === "NOT_INTERESTED") return "Blocked";
+  if (status === "COMPLETED" || status === "INTERESTED") return "Completed";
+  if (status === "FOLLOW_UP_DUE" || status === "OVERDUE" || status === "INITIAL_SENT" || status === "FOLLOW_UP_SENT") return "Contacted";
+  return "Not contacted";
+}
+
+function mapPriority(priority: string): Priority {
+  if (priority === "HIGH" || priority === "URGENT") return "High";
+  if (priority === "LOW") return "Low";
+  return "Medium";
 }

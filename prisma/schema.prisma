@@ -301,6 +301,7 @@ model DataSource {
   type          DataSourceType
   url           String?
   description   String?
+  fileSizeBytes Int             @default(0)
   importance    TargetPriority  @default(MEDIUM)
   owner         String?
   lastCheckedAt DateTime?

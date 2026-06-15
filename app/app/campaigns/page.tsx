@@ -26,7 +26,7 @@ export default async function CampaignsPage() {
     const replies = campaign.targets.filter((t) => t.status === "REPLIED").length;
     const blocked = campaign.targets.filter((t) => t.status === "STOPPED" || t.status === "NOT_INTERESTED").length;
     const followUpsDue = campaign.followUps.filter((f) => f.status === "DUE").length;
-    const progress = totalTargets > 0 ? Math.round((completed / totalTargets) * 100) : 0;
+    const progress = totalTargets > 0 ? Math.round(((completed + blocked) / totalTargets) * 100) : 0;
 
     return {
       id: campaign.id,
@@ -35,6 +35,7 @@ export default async function CampaignsPage() {
       goal: campaign.goal,
       status: campaign.status === "DRAFT" ? "Review" : 
               campaign.status === "ACTIVE" ? "Active" : 
+              campaign.status === "PAUSED" ? "Paused" :
               campaign.status === "COMPLETED" ? "Completed" : "Waiting",
       owner: campaign.user.name || campaign.user.email || "Unknown",
       channel: campaign.channel || "Email",

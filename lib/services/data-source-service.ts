@@ -1,6 +1,7 @@
 import { ActivityType } from "@prisma/client";
 
-import { assertOwned } from "@/lib/auth";
+import { ApiError, assertOwned } from "@/lib/auth";
+import { MAX_ACCOUNT_STORAGE_BYTES, MAX_DOCUMENT_BYTES } from "@/lib/account-limits";
 import { prisma } from "@/lib/db";
 import { createActivityLog } from "@/lib/services/activity-service";
 import type { DataSourceCreateInput } from "@/lib/validators";
@@ -15,6 +16,7 @@ export async function listDataSources(userId: string) {
 
 export async function addDataSource(userId: string, input: DataSourceCreateInput) {
   await validateSourceScope(userId, input.campaignId, input.targetId);
+  await validateStorageLimit(userId, input.fileSizeBytes ?? 0);
 
   const source = await prisma.dataSource.create({
     data: {
@@ -34,6 +36,23 @@ export async function addDataSource(userId: string, input: DataSourceCreateInput
   }
 
   return source;
+}
+
+export async function getAccountStorageUsage(userId: string) {
+  const aggregate = await prisma.dataSource.aggregate({
+    where: { userId },
+    _sum: { fileSizeBytes: true },
+    _count: { id: true },
+  });
+
+  const usedBytes = aggregate._sum.fileSizeBytes ?? 0;
+
+  return {
+    usedBytes,
+    limitBytes: MAX_ACCOUNT_STORAGE_BYTES,
+    remainingBytes: Math.max(MAX_ACCOUNT_STORAGE_BYTES - usedBytes, 0),
+    documentCount: aggregate._count.id,
+  };
 }
 
 export async function updateDataSource(userId: string, sourceId: string, input: Partial<DataSourceCreateInput>) {
@@ -79,3 +98,14 @@ async function validateSourceScope(userId: string, campaignId?: string | null, t
   }
 }
 
+async function validateStorageLimit(userId: string, fileSizeBytes: number) {
+  if (fileSizeBytes > MAX_DOCUMENT_BYTES) {
+    throw new ApiError(400, "Document limit exceeded. Each imported document must be 25 MB or less.");
+  }
+
+  const usage = await getAccountStorageUsage(userId);
+
+  if (usage.usedBytes + fileSizeBytes > MAX_ACCOUNT_STORAGE_BYTES) {
+    throw new ApiError(400, "Account storage limit exceeded. Each account can store up to 1 GB.");
+  }
+}

@@ -14,17 +14,25 @@ export function CampaignControls({
   currentStatus: string;
 }) {
   const router = useRouter();
+  const [optimisticStatus, setOptimisticStatus] = React.useState<string | null>(null);
   const [isPausing, setIsPausing] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
 
-  const isPaused = currentStatus === "PAUSED";
+  const localStatus = optimisticStatus ?? currentStatus;
+  const isPaused = localStatus === "PAUSED";
 
   const handlePause = async () => {
     setIsPausing(true);
+    const nextStatus = isPaused ? "ACTIVE" : "PAUSED";
+    setOptimisticStatus(nextStatus);
+
     try {
-      await pauseCampaignAction(campaignId);
+      const result = await pauseCampaignAction(campaignId);
+      setOptimisticStatus(result.status);
       router.refresh();
+    } catch {
+      setOptimisticStatus(null);
     } finally {
       setIsPausing(false);
     }
@@ -50,16 +58,21 @@ export function CampaignControls({
       <button
         onClick={handlePause}
         disabled={isPausing}
-        className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50"
+        className={[
+          "flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm transition disabled:opacity-50",
+          isPaused
+            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100"
+            : "border-neutral-200 bg-white text-neutral-700 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700",
+        ].join(" ")}
       >
         {isPausing ? (
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-300 border-t-violet-700" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/25 border-t-current" />
         ) : isPaused ? (
           <Play className="h-4 w-4" />
         ) : (
           <Pause className="h-4 w-4" />
         )}
-        {isPaused ? "Resume" : "Pause"}
+        {isPaused ? "Activate" : "Pause"}
       </button>
 
       {/* Delete */}

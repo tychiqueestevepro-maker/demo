@@ -4,6 +4,9 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { parse } from "csv-parse/sync";
+import { normalizeCsvRecord } from "@/lib/csv-utils";
+import { deleteCampaignAction, pauseCampaignAction } from "@/app/actions/campaign-controls";
 import { searchWorkspace } from "@/app/actions/search";
 import { addDataSource, deleteDataSource } from "@/app/actions/data-directory";
 import { markFollowUpCompleted, snoozeFollowUp } from "@/app/actions/follow-ups";
@@ -19,6 +22,7 @@ import {
   Building2,
   CalendarClock,
   Check,
+  CheckCircle2,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
@@ -41,6 +45,11 @@ import {
   MapPinned,
   MessageCircle,
   MoreHorizontal,
+  Pause,
+  LinkIcon,
+  Mail,
+  Phone,
+  Play,
   Plus,
   RefreshCcw,
   Search,
@@ -51,7 +60,9 @@ import {
   Trash2,
   Upload,
   Users,
+  Video,
   X,
+  XCircle,
 } from "lucide-react";
 
 import {
@@ -78,6 +89,7 @@ import {
   type TargetStatus,
   type TimelineEvent,
 } from "@/lib/mock-data";
+import { MAX_DOCUMENT_BYTES, MAX_PROSPECTS_PER_CAMPAIGN, PROSPECTS_PER_PAGE, formatBytes } from "@/lib/account-limits";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -109,6 +121,7 @@ const navSections = [
 
 const statusTones: Record<CampaignStatus | TargetStatus, React.ComponentProps<typeof Badge>["tone"]> = {
   Active: "emerald",
+  Paused: "amber",
   Waiting: "amber",
   Blocked: "rose",
   Completed: "blue",
@@ -628,7 +641,7 @@ export function AppSidebar({
 
   return (
     <aside className={cn(
-      "sticky top-0 z-20 hidden h-screen overflow-y-auto border-r border-white/15 bg-[radial-gradient(circle_at_30%_0%,rgba(216,180,254,0.38),transparent_34%),linear-gradient(180deg,#7c3aed_0%,#5b21b6_54%,#3b168f_100%)] px-4 py-5 text-white shadow-2xl shadow-violet-950/20 transition-all duration-300 lg:block shrink-0",
+      "sticky top-0 z-20 hidden h-screen overflow-visible border-r border-white/15 bg-[radial-gradient(circle_at_30%_0%,rgba(216,180,254,0.38),transparent_34%),linear-gradient(180deg,#7c3aed_0%,#5b21b6_54%,#3b168f_100%)] px-4 py-5 text-white shadow-2xl shadow-violet-950/20 transition-all duration-300 lg:block shrink-0",
       collapsed ? "w-24" : "w-72",
     )}>
       <div className="absolute inset-0 bg-grid opacity-25" />
@@ -982,7 +995,7 @@ export function TargetStatusBadge({ status }: { status: TargetStatus }) {
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
-  return <Badge tone={priorityTones[priority]}>{priority}</Badge>;
+  return null;
 }
 
 export function CampaignStatusBadge({ status }: { status: CampaignStatus }) {
@@ -1004,7 +1017,7 @@ const campaignFilterGroups = [
   },
   {
     title: "Status",
-    filters: ["Active", "Waiting", "Blocked", "Review", "Completed"],
+    filters: ["Active", "Paused", "Waiting", "Blocked", "Review", "Completed"],
   },
   {
     title: "Category",
@@ -1049,8 +1062,9 @@ export function CampaignDirectory({ rows = campaigns }: { rows?: Campaign[] }) {
   const [activeFilter, setActiveFilter] = React.useState("All");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const filteredRows = rows.filter((campaign) => campaignMatchesFilter(campaign, activeFilter));
-  const needsActionCount = rows.filter((campaign) => campaignMatchesFilter(campaign, "Needs action")).length;
   const activeCount = rows.filter((campaign) => campaign.status === "Active" || campaign.status === "Review").length;
+  const pausedCount = rows.filter((campaign) => campaign.status === "Paused").length;
+  const completedCount = rows.filter((campaign) => campaign.status === "Completed").length;
 
   return (
     <div className="space-y-5">
@@ -1080,13 +1094,27 @@ export function CampaignDirectory({ rows = campaigns }: { rows?: Campaign[] }) {
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge tone="violet" className="rounded-md px-3 py-2">
+            <button
+              onClick={() => setActiveFilter(activeFilter === "Active" ? "All" : "Active")}
+              className={cn("inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition", activeFilter === "Active" ? "bg-violet-600 text-white" : "bg-violet-50 text-violet-700 hover:bg-violet-100")}
+            >
               <Users className="h-3.5 w-3.5" />
-              {activeCount} running
-            </Badge>
-            <Badge tone={needsActionCount ? "amber" : "emerald"} className="rounded-md px-3 py-2">
-              {needsActionCount} need action
-            </Badge>
+              {activeCount} Active
+            </button>
+            <button
+              onClick={() => setActiveFilter(activeFilter === "Paused" ? "All" : "Paused")}
+              className={cn("inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition", activeFilter === "Paused" ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700 hover:bg-amber-100")}
+            >
+              <Pause className="h-3.5 w-3.5" />
+              {pausedCount} Paused
+            </button>
+            <button
+              onClick={() => setActiveFilter(activeFilter === "Completed" ? "All" : "Completed")}
+              className={cn("inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition", activeFilter === "Completed" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100")}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {completedCount} Completed
+            </button>
           </div>
         </div>
         {filtersOpen ? (
@@ -1150,16 +1178,52 @@ function CampaignFilterPanel({
 }
 
 export function CampaignCard({ campaign }: { campaign: Campaign }) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [statusOverride, setStatusOverride] = React.useState<CampaignStatus | null>(null);
+  const [isPausing, setIsPausing] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+
+  const visibleStatus = statusOverride ?? campaign.status;
+  const isPaused = visibleStatus === "Paused";
   const channelValues = campaignChannelValues(campaign.channel);
   const metrics = [
     ["Due", campaign.followUpsDue, "manual actions"],
     ["Replies", campaign.replies, "to review"],
-    ["Blocked", campaign.blocked, "need docs/info"],
+    ["Refused", campaign.blocked, "rejected"],
     ["Done", campaign.completed, "completed"],
   ] as const;
 
+  const handlePause = async () => {
+    setIsPausing(true);
+    const nextStatus = isPaused ? "Active" : "Paused";
+    setStatusOverride(nextStatus);
+
+    try {
+      const result = await pauseCampaignAction(campaign.id);
+      setStatusOverride(result.status === "PAUSED" ? "Paused" : "Active");
+      router.refresh();
+      setOpen(false);
+    } catch {
+      setStatusOverride(null);
+    } finally {
+      setIsPausing(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteCampaignAction(campaign.id);
+      router.refresh();
+      setOpen(false);
+    } catch {
+      setIsDeleting(false);
+    }
+  };
+
   return (
-    <article className="overflow-hidden rounded-lg border border-violet-500/15 bg-white shadow-sm transition hover:border-violet-500/25 hover:shadow-xl hover:shadow-violet-950/8">
+    <article className="overflow-visible rounded-lg border border-violet-500/15 bg-white shadow-sm transition hover:border-violet-500/25 hover:shadow-xl hover:shadow-violet-950/8">
       <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -1172,10 +1236,47 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
             <p className="mt-2 line-clamp-1 max-w-2xl text-sm text-neutral-500">{campaign.goal}</p>
           </div>
           <div className="flex items-center gap-2">
-            <CampaignStatusBadge status={campaign.status} />
-            <button type="button" aria-label="Campaign actions" className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-violet-50 hover:text-violet-700">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
+            <CampaignStatusBadge status={visibleStatus} />
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Campaign actions"
+                aria-expanded={open}
+                onClick={() => setOpen((value) => !value)}
+                className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-violet-50 hover:text-violet-700"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+              {open ? (
+                <div className="absolute right-0 top-10 z-30 w-48 rounded-lg border border-violet-500/15 bg-white p-1.5 shadow-xl shadow-violet-950/15">
+                  <Link
+                    href={`/app/campaigns/${campaign.id}`}
+                    className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-neutral-700 transition hover:bg-violet-50 hover:text-violet-700"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open campaign
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handlePause}
+                    disabled={isPausing || isDeleting}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50"
+                  >
+                    {isPausing ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/25 border-t-current" /> : isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                    {isPaused ? "Activate" : "Pause"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={isDeleting || isPausing}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                  >
+                    {isDeleting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/25 border-t-current" /> : <Trash2 className="h-4 w-4" />}
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -1299,37 +1400,55 @@ export function CampaignTable({ rows = campaigns }: { rows?: Campaign[] }) {
   );
 }
 
-export function TargetTable({ rows }: { rows: TargetRecord[] }) {
+type TargetTableRow = TargetRecord & {
+  step?: number;
+  message?: string;
+};
+
+export function TargetTable({ rows }: { rows: TargetTableRow[] }) {
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(Math.ceil(rows.length / PROSPECTS_PER_PAGE), 1);
+  const safePage = Math.min(page, totalPages);
+  const visibleRows = rows.slice((safePage - 1) * PROSPECTS_PER_PAGE, safePage * PROSPECTS_PER_PAGE);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-violet-500/15 bg-white shadow-2xl shadow-violet-950/8">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
+        <table className="w-full min-w-[860px] text-left text-sm">
           <thead className="bg-violet-50 text-xs uppercase tracking-wide text-violet-900/55">
             <tr>
-              {["Target", "Status", "Current step", "Priority", "Last action", "Next action", "Due", "Docs/info", "Actions"].map((head) => (
+              {["Target", "Step", "Message", "Next action", "Due", "Docs/info", "Actions"].map((head) => (
                 <th key={head} className="px-4 py-3 font-semibold">{head}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-violet-100">
-            {rows.map((target) => (
+            {visibleRows.map((target) => (
               <tr key={target.id} className="hover:bg-violet-50/50">
                 <td className="px-4 py-4">
-                  <Link href={`/app/campaigns/${target.campaignId}/targets/${target.id}`} className="font-semibold text-neutral-950">{target.name}</Link>
-                  <p className="text-xs text-neutral-500">{target.role}, {target.company}</p>
+                  <Link href={`/app/campaigns/${target.campaignId}/targets/${target.id}#follow-up`} className="font-semibold text-neutral-950">{target.name}</Link>
+                  <p className="text-xs text-neutral-500">{target.role || "No role provided"}</p>
+                  {target.company ? <p className="text-xs text-neutral-400">{target.company}</p> : null}
                 </td>
-                <td className="px-4 py-4"><TargetStatusBadge status={target.status} /></td>
+                <td className="px-4 py-4"><Badge tone="violet">Step {target.step ?? 0}</Badge></td>
                 <td className="px-4 py-4">{target.currentStep}</td>
-                <td className="px-4 py-4"><PriorityBadge priority={target.priority} /></td>
-                <td className="px-4 py-4 text-neutral-500">{target.lastAction}</td>
                 <td className="px-4 py-4 text-neutral-700">{target.nextAction}</td>
                 <td className="px-4 py-4">{target.due}</td>
                 <td className="px-4 py-4">{target.sourceCount}</td>
                 <td className="px-4 py-4">
                   <div className="flex gap-2">
-                    <MessagePreviewModal label="Copy next" message={`Hi ${target.name.split(" ")[0]}, quick follow-up on ${target.nextAction.toLowerCase()}.`} />
-                    <Button size="sm" variant="ghost">Sent</Button>
-                    <Button size="sm" variant="ghost">Replied</Button>
+                    {target.status === "COMPLETED" || target.status === "INTERESTED" ? (
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-600"><CheckCircle2 className="h-4 w-4" /> Validated</span>
+                    ) : target.status === "STOPPED" || target.status === "NOT_INTERESTED" ? (
+                      <span className="flex items-center gap-1.5 text-sm font-semibold text-rose-600"><XCircle className="h-4 w-4" /> Refused</span>
+                    ) : (
+                      <>
+                        <MessagePreviewModal label="Copy next" message={target.message || `Hi ${target.name.split(" ")[0]}, quick follow-up on ${target.nextAction.toLowerCase()}.`} />
+                        <TargetActionButton targetId={target.id} endpoint="mark-sent" label="Next step" />
+                        <TargetActionButton targetId={target.id} endpoint="mark-completed" label="Validated" tone="emerald" />
+                        <TargetActionButton targetId={target.id} endpoint="stop" label="Refused" tone="rose" />
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -1337,7 +1456,79 @@ export function TargetTable({ rows }: { rows: TargetRecord[] }) {
           </tbody>
         </table>
       </div>
+      {rows.length > PROSPECTS_PER_PAGE ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-violet-100 bg-white px-4 py-3 text-sm">
+          <p className="text-neutral-500">
+            Showing {(safePage - 1) * PROSPECTS_PER_PAGE + 1}-{Math.min(safePage * PROSPECTS_PER_PAGE, rows.length)} of {rows.length} prospects
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setPage((value) => Math.max(value - 1, 1))} disabled={safePage === 1}>
+              Previous
+            </Button>
+            <Badge tone="violet">Page {safePage} / {totalPages}</Badge>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setPage((value) => Math.min(value + 1, totalPages))} disabled={safePage === totalPages}>
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+export function TargetActionButton({
+  targetId,
+  endpoint,
+  label,
+  tone = "neutral",
+}: {
+  targetId: string;
+  endpoint: "mark-sent" | "mark-completed" | "stop";
+  label: string;
+  tone?: "neutral" | "emerald" | "rose";
+}) {
+  const router = useRouter();
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const toneClass =
+    tone === "emerald"
+      ? "text-emerald-700 hover:bg-emerald-50"
+      : tone === "rose"
+        ? "text-rose-700 hover:bg-rose-50"
+        : "";
+
+  const handleClick = async () => {
+    setPending(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/targets/${targetId}/${endpoint}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: endpoint === "mark-sent" ? "{}" : undefined,
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Target action failed.");
+      }
+
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed. Try again.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <span className="inline-flex flex-col items-start gap-1">
+      <Button size="sm" variant="ghost" className={toneClass} onClick={handleClick} disabled={pending}>
+        {pending ? "..." : label}
+      </Button>
+      {error ? <span className="max-w-32 text-xs font-medium text-rose-600">{error}</span> : null}
+    </span>
   );
 }
 
@@ -1435,29 +1626,13 @@ export function TargetSequence({ stages, currentStep }: { stages: PlaybookStage[
 }
 
 export function ConversationContext({ target, events }: { target: TargetRecord; events: TimelineEvent[] }) {
-  const initialMessages = [
-    {
-      id: "last-action",
-      speaker: "you",
-      author: "You",
-      text: target.lastAction,
-      time: "Earlier",
-    },
-    {
-      id: "what-happened",
-      speaker: "prospect",
-      author: target.name,
-      text: target.summary.happened,
-      time: "Latest",
-    },
-    ...events.map((event) => ({
-      id: event.id,
-      speaker: "you",
-      author: "You",
-      text: event.description,
-      time: event.time,
-    })),
-  ];
+  const initialMessages: { id: string, speaker: "you" | "prospect", author: string, text: string, time: string }[] = events.map((event) => ({
+    id: event.id,
+    speaker: "you",
+    author: "You",
+    text: event.description,
+    time: event.time,
+  }));
   const [messages, setMessages] = React.useState(initialMessages);
   const [draft, setDraft] = React.useState("");
   const [speaker, setSpeaker] = React.useState<"you" | "prospect">("you");
@@ -2736,21 +2911,22 @@ export function CampaignTabs({
   activityEvents = [],
 }: {
   campaignId: string;
-  targets?: any[];
-  playbookStages?: any[];
-  dataSources?: any[];
-  followUps?: any[];
-  activityEvents?: any[];
+  targets?: TargetTableRow[];
+  playbookStages?: PlaybookStage[];
+  dataSources?: DirectoryDataSource[];
+  followUps?: FollowUp[];
+  activityEvents?: TimelineEvent[];
 }) {
-  const [localSources, setLocalSources] = React.useState<any[]>(sources);
+  const [localSources, setLocalSources] = React.useState<DirectoryDataSource[]>(sources);
 
-  const handleAddDoc = async (draft: any) => {
+  const handleAddDoc = async (draft: DirectoryDraft) => {
     const { addDataSource } = await import("@/app/actions/data-directory");
     const source = await addDataSource({
       title: draft.title,
       type: draft.type,
       url: draft.url || undefined,
       description: draft.description || undefined,
+      fileSizeBytes: draft.fileSizeBytes || 0,
       campaignId,
     });
     setLocalSources((prev) => [
@@ -2760,6 +2936,7 @@ export function CampaignTabs({
         type: draft.type,
         url: source.url || "",
         description: source.description || "",
+        fileSizeBytes: source.fileSizeBytes || 0,
         campaignId,
         linkedCampaign: "",
         importance: "MEDIUM",
@@ -2791,7 +2968,7 @@ export function CampaignTabs({
             {campaignFollowUps.length === 0 ? (
               <p className="text-sm text-neutral-500">No follow-ups due. Add prospects to get started.</p>
             ) : (
-              campaignFollowUps.slice(0, 3).map((item: any) => (
+              campaignFollowUps.slice(0, 3).map((item) => (
                 <div key={item.id} className="flex items-center justify-between gap-3 rounded-2xl border border-violet-500/10 bg-violet-50/60 p-3 text-sm">
                   <span>{item.target} - {item.reason}</span>
                   <PriorityBadge priority={item.priority} />
@@ -2801,11 +2978,18 @@ export function CampaignTabs({
           </CardContent>
         </Card>
       </Tabs.Content>
-      <Tabs.Content value="targets">
+      <Tabs.Content value="targets" className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-semibold text-neutral-950">Prospects</p>
+            <p className="mt-1 text-sm text-neutral-500">{campaignTargets.length}/{MAX_PROSPECTS_PER_CAMPAIGN} imported into this campaign</p>
+          </div>
+          <ImportProspectsDialog campaignId={campaignId} currentCount={campaignTargets.length} />
+        </div>
         {campaignTargets.length === 0 ? (
           <EmptyState title="No prospects yet" description="Prospects are added when you create or import targets into this campaign." />
         ) : (
-          <TargetTable rows={campaignTargets as any} />
+          <TargetTable rows={campaignTargets} />
         )}
       </Tabs.Content>
       <Tabs.Content value="playbook" className="grid gap-4 lg:grid-cols-2">
@@ -2814,24 +2998,24 @@ export function CampaignTabs({
             <EmptyState title="No playbook stages" description="Playbook stages are generated when you create a campaign using the wizard." />
           </div>
         ) : (
-          stages.map((stage: any) => <PlaybookStageCard key={stage.id} stage={stage} />)
+          stages.map((stage) => <PlaybookStageCard key={stage.id} stage={stage} />)
         )}
       </Tabs.Content>
       <Tabs.Content value="follow-ups">
         {campaignFollowUps.length === 0 ? (
           <EmptyState title="No follow-ups yet" description="Follow-ups appear here once prospects have been added and actions are triggered." />
         ) : (
-          <FollowUpQueue rows={campaignFollowUps as any} />
+          <FollowUpQueue rows={campaignFollowUps} />
         )}
       </Tabs.Content>
       <Tabs.Content value="documents">
-        <CampaignDocumentsTab sources={localSources} onAdd={handleAddDoc} campaignId={campaignId} />
+        <CampaignDocumentsTab sources={localSources} onAdd={handleAddDoc} />
       </Tabs.Content>
       <Tabs.Content value="activity">
         {activityEvents.length === 0 ? (
           <EmptyState title="No activity yet" description="Activity is logged as you add prospects, send follow-ups, and update documents." />
         ) : (
-          <Timeline events={activityEvents as any} />
+          <Timeline events={activityEvents} />
         )}
       </Tabs.Content>
     </Tabs.Root>
@@ -2839,15 +3023,32 @@ export function CampaignTabs({
 }
 
 
-function CampaignDocumentsTab({ sources, onAdd, campaignId }: { sources: any[]; onAdd: (draft: any) => void; campaignId: string }) {
+function CampaignDocumentsTab({ sources, onAdd }: { sources: DirectoryDataSource[]; onAdd: (draft: DirectoryDraft) => Promise<void> }) {
   const [draft, setDraft] = React.useState<DirectoryDraft>({ title: "", type: "Note", url: "", description: "" });
-  const [localSources, setLocalSources] = React.useState<any[]>(sources);
+  const [localSources, setLocalSources] = React.useState<DirectoryDataSource[]>(sources);
+  const [error, setError] = React.useState("");
 
   const handleAdd = async () => {
     if (!draft.title.trim()) return;
-    await onAdd(draft);
-    setLocalSources((prev) => [{ id: Date.now().toString(), title: draft.title, type: draft.type, url: draft.url, description: draft.description, lastChecked: "Just now" }, ...prev]);
-    setDraft({ title: "", type: "Note", url: "", description: "" });
+    setError("");
+
+    try {
+      await onAdd(draft);
+      setLocalSources((prev) => [{
+        id: Date.now().toString(),
+        title: draft.title,
+        type: draft.type,
+        url: draft.url,
+        description: draft.description,
+        fileSizeBytes: draft.fileSizeBytes ?? 0,
+        campaignId: sources[0]?.campaignId ?? "",
+        importance: "Medium",
+        lastChecked: "Just now",
+      }, ...prev]);
+      setDraft({ title: "", type: "Note", url: "", description: "" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add document.");
+    }
   };
 
   return (
@@ -2859,16 +3060,19 @@ function CampaignDocumentsTab({ sources, onAdd, campaignId }: { sources: any[]; 
         title="Attach document to campaign"
         buttonLabel="Add document"
         placeholder="Contract, folder, invoice, reference link..."
+        error={error}
+        onError={setError}
       />
       {localSources.length > 0 ? (
         <div className="grid gap-3 md:grid-cols-2">
-          {localSources.map((source: any) => (
+          {localSources.map((source) => (
             <div key={source.id} className="rounded-2xl border border-violet-500/10 bg-white p-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-semibold text-neutral-950">{source.title}</p>
                   <Badge tone="blue" className="mt-1">{String(source.type).replace(/_/g, " ")}</Badge>
                   {source.description && <p className="mt-2 text-sm text-neutral-500">{source.description}</p>}
+                  {source.fileSizeBytes ? <p className="mt-2 text-xs font-medium text-neutral-400">{formatBytes(source.fileSizeBytes)}</p> : null}
                 </div>
                 {source.url && <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:text-violet-700"><ExternalLink className="h-4 w-4" /></a>}
               </div>
@@ -2881,6 +3085,180 @@ function CampaignDocumentsTab({ sources, onAdd, campaignId }: { sources: any[]; 
       )}
     </div>
   );
+}
+
+function ImportProspectsDialog({ campaignId, currentCount }: { campaignId: string; currentCount: number }) {
+  const router = useRouter();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [open, setOpen] = React.useState(false);
+  const [csv, setCsv] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [isImporting, setIsImporting] = React.useState(false);
+
+  const parsedPreview = React.useMemo(() => {
+    if (!csv.trim()) return [];
+    try {
+      const records = parse(csv, { columns: true, skip_empty_lines: true, trim: true, relax_column_count: true }) as Record<string, string>[];
+      return records.map(normalizeCsvRecord).filter(t => t.name);
+    } catch (e) {
+      return [];
+    }
+  }, [csv]);
+
+  const remainingProspects = Math.max(MAX_PROSPECTS_PER_CAMPAIGN - currentCount, 0);
+  const csvRows = countCsvRows(csv);
+  const canImport = csv.trim().length > 0 && csvRows <= remainingProspects && !isImporting;
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCsv(String(reader.result ?? ""));
+      setError("");
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (!canImport) return;
+
+    setIsImporting(true);
+    setError("");
+
+    try {
+      if (csvRows > remainingProspects) {
+        throw new Error(`Campaign prospect limit exceeded. You can import ${remainingProspects} more prospect(s).`);
+      }
+
+      const response = await fetch(`/api/campaigns/${campaignId}/targets/import`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Import failed.");
+      }
+
+      setCsv("");
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed.");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger asChild>
+        <Button type="button" variant="accent" className="rounded-md">
+          <Upload className="h-4 w-4" />
+          Import prospects
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-violet-950/35 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,560px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-violet-500/20 bg-white p-5 shadow-2xl shadow-violet-950/25">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Dialog.Title className="text-lg font-semibold text-neutral-950">Import prospects</Dialog.Title>
+              <Dialog.Description className="mt-1 text-sm text-neutral-500">Paste a CSV or upload a file with columns like name, email, company, role, notes. Max {MAX_PROSPECTS_PER_CAMPAIGN} prospects per campaign.</Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <button type="button" aria-label="Close import prospects" className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700">
+                <X className="h-4 w-4" />
+              </button>
+            </Dialog.Close>
+          </div>
+
+          <div className="mt-5 space-y-3">
+            <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleFileChange} />
+            <Button type="button" variant="secondary" className="rounded-md" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="h-4 w-4" />
+              Upload CSV
+            </Button>
+            {csv.trim() ? (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-neutral-700">Previewing {parsedPreview.length} valid prospect{parsedPreview.length !== 1 ? 's' : ''}</p>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => { setCsv(""); setError(""); }} className="h-8 rounded-md px-3 text-xs">Clear / Edit</Button>
+                </div>
+                <div className="max-h-[300px] overflow-y-auto rounded-lg border border-neutral-200 shadow-sm">
+                  {parsedPreview.length > 0 ? (
+                    <div className="flex flex-col divide-y divide-neutral-100">
+                      {parsedPreview.slice(0, 50).map((prospect, idx) => (
+                        <div key={idx} className="flex items-center gap-3 p-3 hover:bg-neutral-50/50">
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate text-sm font-semibold text-neutral-900">{prospect.name}</p>
+                            <p className="truncate text-xs text-neutral-500">
+                              {prospect.role || "No role"} {prospect.company ? `• ${prospect.company}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <div className={`grid h-6 w-6 place-items-center rounded-full ${prospect.profileUrl ? 'bg-emerald-100 text-emerald-600' : 'bg-neutral-100 text-neutral-400'}`} title={prospect.profileUrl ? "LinkedIn present" : "No LinkedIn"}>
+                              <LinkIcon className="h-3 w-3" />
+                            </div>
+                            <div className={`grid h-6 w-6 place-items-center rounded-full ${prospect.email ? 'bg-emerald-100 text-emerald-600' : 'bg-neutral-100 text-neutral-400'}`} title={prospect.email ? "Email present" : "No email"}>
+                              <Mail className="h-3 w-3" />
+                            </div>
+                            <div className={`grid h-6 w-6 place-items-center rounded-full ${prospect.phone ? 'bg-emerald-100 text-emerald-600' : 'bg-neutral-100 text-neutral-400'}`} title={prospect.phone ? "Phone present" : "No phone"}>
+                              <Phone className="h-3 w-3" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {parsedPreview.length > 50 && (
+                         <p className="p-3 text-center text-xs text-neutral-500">And {parsedPreview.length - 50} more...</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center text-sm text-neutral-500">
+                      No valid prospects found. Ensure your CSV has a header row with at least a 'name' column.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <textarea
+                value={csv}
+                onChange={(event) => {
+                  setCsv(event.target.value);
+                  setError("");
+                }}
+                placeholder={"name,email,company,role,notes\nJane Doe,jane@example.com,Acme,VP Finance,Met at event"}
+                className="min-h-44 w-full resize-y rounded-lg border border-violet-500/15 bg-white px-3 py-2 text-sm text-neutral-800 shadow-sm outline-none transition placeholder:text-neutral-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              />
+            )}
+            {error ? <p className="text-sm font-medium text-rose-600">{error}</p> : null}
+            <p className="text-xs font-medium text-neutral-500">
+              {currentCount}/{MAX_PROSPECTS_PER_CAMPAIGN} already in this campaign. {remainingProspects} import slot(s) remaining.
+            </p>
+          </div>
+
+          <div className="mt-5 flex justify-end gap-2">
+            <Dialog.Close asChild>
+              <Button type="button" variant="secondary" className="rounded-md" disabled={isImporting}>Cancel</Button>
+            </Dialog.Close>
+            <Button type="button" variant="accent" className="rounded-md" onClick={handleImport} disabled={!canImport}>
+              {isImporting ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : <Upload className="h-4 w-4" />}
+              Import
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function countCsvRows(csv: string) {
+  const lines = csv.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  return Math.max(lines.length - 1, 0);
 }
 
 export function TargetDataDirectory({ targetId }: { targetId: string }) {
@@ -3019,6 +3397,7 @@ type DirectoryDraft = {
   type: string;
   url: string;
   description: string;
+  fileSizeBytes?: number;
 };
 
 const emptyDirectoryDraft: DirectoryDraft = {
@@ -3031,7 +3410,26 @@ const emptyDirectoryDraft: DirectoryDraft = {
 const directoryItemTypes = ["Document", "Link", "Note", "Drive folder", "Email thread", "Invoice", "Contract"];
 
 type DirectoryDataSource = {
-  id: string; title: string; type: string; url: string; description: string; campaignId: string; targetId?: string; linkedCampaign?: string; linkedTarget?: string; missing?: boolean; importance: string; lastChecked: string;
+  id: string; title: string; type: string; url: string; description: string; fileSizeBytes?: number; campaignId: string; targetId?: string; linkedCampaign?: string; linkedTarget?: string; missing?: boolean; importance: string; lastChecked: string;
+};
+
+type DirectoryCampaign = {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  type: string;
+  goal: string;
+  targets: number;
+};
+
+type DirectoryTarget = {
+  id: string;
+  campaignId: string;
+  name: string;
+  role?: string;
+  company?: string;
+  status?: TargetStatus;
+  priority?: Priority;
 };
 
 export function DataDirectoryWorkspace({
@@ -3039,13 +3437,14 @@ export function DataDirectoryWorkspace({
   initialTargets = [],
   initialDataSources = [],
 }: {
-  initialCampaigns?: any[];
-  initialTargets?: any[];
+  initialCampaigns?: DirectoryCampaign[];
+  initialTargets?: DirectoryTarget[];
   initialDataSources?: DirectoryDataSource[];
 }) {
   const [selectedCampaignId, setSelectedCampaignId] = React.useState(initialCampaigns[0]?.id ?? "");
   const [selectedTargetId, setSelectedTargetId] = React.useState(initialTargets.find((target) => target.campaignId === selectedCampaignId)?.id ?? "");
   const [items, setItems] = React.useState<DirectoryDataSource[]>(initialDataSources);
+  const [directoryError, setDirectoryError] = React.useState("");
   const [campaignDraft, setCampaignDraft] = React.useState<DirectoryDraft>({
     title: "Campaign folder",
     type: "Drive folder",
@@ -3078,61 +3477,75 @@ export function DataDirectoryWorkspace({
 
   const addCampaignItem = async () => {
     if (!campaignDraft.title.trim()) return;
+    setDirectoryError("");
 
-    const source = await addDataSource({
-      title: campaignDraft.title.trim(),
-      type: campaignDraft.type,
-      url: campaignDraft.url.trim() || undefined,
-      description: campaignDraft.description.trim() || undefined,
-      campaignId: selectedCampaign.id,
-    });
-
-    setItems((current) => [
-      {
-        id: source.id,
-        title: source.title,
+    try {
+      const source = await addDataSource({
+        title: campaignDraft.title.trim(),
         type: campaignDraft.type,
-        url: source.url || "",
+        url: campaignDraft.url.trim() || undefined,
+        description: campaignDraft.description.trim() || undefined,
+        fileSizeBytes: campaignDraft.fileSizeBytes ?? 0,
         campaignId: selectedCampaign.id,
-        linkedCampaign: selectedCampaign.name,
-        description: source.description || "",
-        importance: "Medium",
-        lastChecked: "Just now",
-      },
-      ...current,
-    ]);
-    setCampaignDraft(emptyDirectoryDraft);
+      });
+
+      setItems((current) => [
+        {
+          id: source.id,
+          title: source.title,
+          type: campaignDraft.type,
+          url: source.url || "",
+          fileSizeBytes: source.fileSizeBytes || 0,
+          campaignId: selectedCampaign.id,
+          linkedCampaign: selectedCampaign.name,
+          description: source.description || "",
+          importance: "Medium",
+          lastChecked: "Just now",
+        },
+        ...current,
+      ]);
+      setCampaignDraft(emptyDirectoryDraft);
+    } catch (err) {
+      setDirectoryError(err instanceof Error ? err.message : "Unable to add document.");
+    }
   };
 
   const addTargetItem = async () => {
     if (!selectedTarget || !targetDraft.title.trim()) return;
+    setDirectoryError("");
 
-    const source = await addDataSource({
-      title: targetDraft.title.trim(),
-      type: targetDraft.type,
-      url: targetDraft.url.trim() || undefined,
-      description: targetDraft.description.trim() || undefined,
-      campaignId: selectedCampaign.id,
-      targetId: selectedTarget.id,
-    });
-
-    setItems((current) => [
-      {
-        id: source.id,
-        title: source.title,
+    try {
+      const source = await addDataSource({
+        title: targetDraft.title.trim(),
         type: targetDraft.type,
-        url: source.url || "",
+        url: targetDraft.url.trim() || undefined,
+        description: targetDraft.description.trim() || undefined,
+        fileSizeBytes: targetDraft.fileSizeBytes ?? 0,
         campaignId: selectedCampaign.id,
         targetId: selectedTarget.id,
-        linkedCampaign: selectedCampaign.name,
-        linkedTarget: selectedTarget.name,
-        description: source.description || "",
-        importance: "Medium",
-        lastChecked: "Just now",
-      },
-      ...current,
-    ]);
-    setTargetDraft(emptyDirectoryDraft);
+      });
+
+      setItems((current) => [
+        {
+          id: source.id,
+          title: source.title,
+          type: targetDraft.type,
+          url: source.url || "",
+          fileSizeBytes: source.fileSizeBytes || 0,
+          campaignId: selectedCampaign.id,
+          targetId: selectedTarget.id,
+          linkedCampaign: selectedCampaign.name,
+          linkedTarget: selectedTarget.name,
+          description: source.description || "",
+          importance: "Medium",
+          lastChecked: "Just now",
+        },
+        ...current,
+      ]);
+      setTargetDraft(emptyDirectoryDraft);
+    } catch (err) {
+      setDirectoryError(err instanceof Error ? err.message : "Unable to add document.");
+    }
   };
 
   const deleteItem = async (itemId: string) => {
@@ -3142,6 +3555,7 @@ export function DataDirectoryWorkspace({
 
   return (
     <div className="space-y-6">
+      {directoryError ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{directoryError}</p> : null}
       <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
           <CardHeader>
@@ -3193,9 +3607,11 @@ export function DataDirectoryWorkspace({
               title="Attach to campaign"
               buttonLabel="Add campaign item"
               placeholder="Contract, onboarding folder, invoice PDF..."
+              error={directoryError}
+              onError={setDirectoryError}
             />
             <DirectoryItemList
-              items={campaignItems as any}
+              items={campaignItems}
               emptyTitle="No campaign documents yet"
               emptyDescription="Add contracts, folders, invoices, checklists, or shared links used by this campaign."
               onDelete={deleteItem}
@@ -3226,11 +3642,11 @@ export function DataDirectoryWorkspace({
                     <p className="truncate font-semibold text-[#120b2f]">{target.name}</p>
                     <p className="mt-1 truncate text-sm text-[#120b2f]/55">{target.role}, {target.company}</p>
                   </div>
-                  <TargetStatusBadge status={target.status} />
+                  <TargetStatusBadge status={target.status ?? "Not contacted"} />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge>{items.filter((item) => item.targetId === target.id).length} items</Badge>
-                  <Badge tone={target.priority === "High" ? "rose" : target.priority === "Medium" ? "amber" : "blue"}>{target.priority}</Badge>
+                  <Badge tone={target.priority === "High" ? "rose" : target.priority === "Medium" ? "amber" : "blue"}>{target.priority ?? "Medium"}</Badge>
                 </div>
               </button>
             )) : (
@@ -3264,9 +3680,11 @@ export function DataDirectoryWorkspace({
               buttonLabel="Add prospect item"
               placeholder="Profile link, call note, email thread, signed doc..."
               disabled={!selectedTarget}
+              error={directoryError}
+              onError={setDirectoryError}
             />
             <DirectoryItemList
-              items={targetItems as any}
+              items={targetItems}
               emptyTitle="No prospect information yet"
               emptyDescription="Add a note, useful profile link, conversation detail, document, or email thread for this prospect."
               onDelete={deleteItem}
@@ -3286,6 +3704,8 @@ function DirectoryDraftForm({
   buttonLabel,
   placeholder,
   disabled = false,
+  error,
+  onError,
 }: {
   draft: DirectoryDraft;
   onChange: (draft: DirectoryDraft) => void;
@@ -3294,11 +3714,19 @@ function DirectoryDraftForm({
   buttonLabel: string;
   placeholder: string;
   disabled?: boolean;
+  error?: string;
+  onError?: (message: string) => void;
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      onError?.(`Document limit exceeded. Max file size is ${formatBytes(MAX_DOCUMENT_BYTES)}.`);
+      event.target.value = "";
+      return;
+    }
 
     const lowerName = file.name.toLowerCase();
     const inferredType = lowerName.includes("invoice")
@@ -3312,7 +3740,9 @@ function DirectoryDraftForm({
       type: inferredType,
       url: `Uploaded file: ${file.name}`,
       description: draft.description.trim() || `${file.name} selected for upload.`,
+      fileSizeBytes: file.size,
     });
+    onError?.("");
     event.target.value = "";
   };
 
@@ -3360,6 +3790,8 @@ function DirectoryDraftForm({
         placeholder="Short context for the team"
         className="mt-3 min-h-20 w-full resize-none rounded-md border border-violet-500/15 bg-white px-3 py-2 text-sm text-[#120b2f] outline-none transition placeholder:text-neutral-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-200 disabled:opacity-50"
       />
+      {draft.fileSizeBytes ? <p className="mt-2 text-xs font-medium text-neutral-500">Selected file: {formatBytes(draft.fileSizeBytes)} / {formatBytes(MAX_DOCUMENT_BYTES)} max</p> : null}
+      {error ? <p className="mt-2 text-sm font-medium text-rose-600">{error}</p> : null}
       <div className="mt-3 flex flex-wrap justify-end gap-2">
         <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={disabled}>
           <Upload className="h-4 w-4" />
@@ -3380,7 +3812,7 @@ function DirectoryItemList({
   emptyDescription,
   onDelete,
 }: {
-  items: DataSource[];
+  items: DirectoryDataSource[];
   emptyTitle: string;
   emptyDescription: string;
   onDelete: (itemId: string) => void;
@@ -3397,7 +3829,7 @@ function DirectoryItemList({
   );
 }
 
-function DirectoryEditableItem({ item, onDelete }: { item: DataSource; onDelete: (itemId: string) => void }) {
+function DirectoryEditableItem({ item, onDelete }: { item: DirectoryDataSource; onDelete: (itemId: string) => void }) {
   const titleLower = item.title.toLowerCase();
   
   let Icon = FileText;

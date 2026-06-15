@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { revalidatePath } from "next/cache";
 
 import { handleApiError, ok } from "@/lib/api-response";
 import { requireUser } from "@/lib/auth";
@@ -12,9 +13,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { userId } = await requireUser(request);
     const { id } = await params;
     const input = targetImportSchema.parse(await request.json());
-    return ok(await importTargetsFromCsv(userId, id, input.csv), 201);
+    const targets = await importTargetsFromCsv(userId, id, input.csv);
+    revalidatePath(`/app/campaigns/${id}`);
+    revalidatePath("/app/campaigns");
+    return ok(targets, 201);
   } catch (error) {
     return handleApiError(error);
   }
 }
-

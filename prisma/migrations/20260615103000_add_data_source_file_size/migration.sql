@@ -1,0 +1,2 @@
+ALTER TABLE "DataSource"
+ADD COLUMN "fileSizeBytes" INTEGER NOT NULL DEFAULT 0;

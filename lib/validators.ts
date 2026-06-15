@@ -110,6 +110,7 @@ export const dataSourceCreateSchema = z.object({
   type: z.enum(DataSourceType),
   url: z.string().url().optional().nullable(),
   description: z.string().max(2000).optional().nullable(),
+  fileSizeBytes: z.number().int().min(0).optional(),
   importance: z.enum(TargetPriority).optional(),
   owner: z.string().max(160).optional().nullable(),
   lastCheckedAt: optionalDateSchema,

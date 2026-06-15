@@ -19,8 +19,10 @@ export class ApiError extends Error {
 
 export async function requireUser(request: NextRequest): Promise<AuthContext> {
   const bearerToken = getBearerToken(request);
+  const cookieToken = getSupabaseCookieToken(request);
+  const accessToken = bearerToken ?? cookieToken;
 
-  if (bearerToken) {
+  if (accessToken) {
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
       throw new ApiError(500, "Supabase environment variables are required for authentication.");
     }
@@ -29,7 +31,7 @@ export async function requireUser(request: NextRequest): Promise<AuthContext> {
     const {
       data: { user },
       error,
-    } = await supabase.auth.getUser(bearerToken);
+    } = await supabase.auth.getUser(accessToken);
 
     if (error || !user?.id || !user.email) {
       throw new ApiError(401, "Invalid Supabase session.");
@@ -89,6 +91,40 @@ function getBearerToken(request: NextRequest) {
   }
 
   return authHeader.slice("bearer ".length).trim();
+}
+
+function getSupabaseCookieToken(request: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const projectRef = supabaseUrl ? new URL(supabaseUrl).hostname.split(".")[0] : null;
+  const authCookie = projectRef ? request.cookies.get(`sb-${projectRef}-auth-token`)?.value : undefined;
+
+  return request.cookies.get("sb-access-token")?.value ?? parseSupabaseAuthCookie(authCookie);
+}
+
+function parseSupabaseAuthCookie(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const decoded = decodeURIComponent(value);
+    const json = decoded.startsWith("base64-")
+      ? Buffer.from(decoded.slice("base64-".length), "base64").toString("utf8")
+      : decoded;
+    const parsed = JSON.parse(json);
+
+    if (Array.isArray(parsed) && typeof parsed[0] === "string") {
+      return parsed[0];
+    }
+
+    if (parsed && typeof parsed === "object" && typeof parsed.access_token === "string") {
+      return parsed.access_token;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 function getSupabaseDisplayName(metadata: unknown) {

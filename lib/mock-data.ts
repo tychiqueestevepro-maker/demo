@@ -19,7 +19,7 @@ export type CampaignType =
   | "Vendor follow-up"
   | "Custom";
 
-export type CampaignStatus = "Active" | "Waiting" | "Blocked" | "Completed" | "Review";
+export type CampaignStatus = "Active" | "Paused" | "Waiting" | "Blocked" | "Completed" | "Review";
 export type TargetStatus = "Not contacted" | "Contacted" | "Replied" | "Blocked" | "Completed" | "Snoozed";
 export type Priority = "High" | "Medium" | "Low";
 
@@ -106,6 +106,7 @@ export type DataSource = {
   linkedCampaign: string;
   linkedTarget?: string;
   description: string;
+  fileSizeBytes?: number;
   importance: Priority;
   lastChecked: string;
   missing?: boolean;

@@ -13,7 +13,14 @@ export default async function FollowUpsPage() {
   }
 
   const dbFollowUps = await prisma.followUp.findMany({
-    where: { userId },
+    where: { 
+      userId,
+      target: {
+        status: {
+          notIn: ["COMPLETED", "INTERESTED", "STOPPED", "NOT_INTERESTED"]
+        }
+      }
+    },
     include: {
       campaign: true,
       target: true,
@@ -35,11 +42,12 @@ export default async function FollowUpsPage() {
     targetId: fu.targetId,
     target: fu.target.name,
     campaign: fu.campaign.name,
+    step: "Step 1",
     type: "Email", // or map from stage if available
     reason: fu.messageSubject || "Follow-up",
-    priority: fu.priority === "HIGH" || fu.priority === "URGENT" ? "High" : "Normal",
+    priority: fu.priority === "HIGH" || fu.priority === "URGENT" ? "High" : "Medium",
     status: fu.status,
-    due: new Date(fu.dueAt).toLocaleDateString(),
+    dueDate: fu.dueAt ? new Date(fu.dueAt).toLocaleDateString() : "Today",
     missingContext: false, // Calculate if needed
     messagePreview: fu.messageBody,
   }));
