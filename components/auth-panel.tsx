@@ -110,7 +110,7 @@ export function AuthPanel({ mode }: { mode: "login" | "signup" }) {
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
                 <p className="font-semibold text-emerald-800">Check your email</p>
                 <p className="mt-2 text-sm text-emerald-700/70">
-                  We sent a confirmation link to <strong>{email}</strong>. Click the link to activate your account.
+                  We sent a confirmation link to <strong>{email}</strong>. Click the link to activate your account. Please check your spam folder.
                 </p>
               </div>
             ) : (
