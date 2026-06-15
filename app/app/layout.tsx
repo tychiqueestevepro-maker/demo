@@ -1,4 +1,4 @@
-import { AppSidebar } from "@/components/product-components";
+import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider } from "@/components/auth-provider";
 import { SubscriptionBanner } from "@/components/subscription-banner";
 import { SubscriptionGate } from "@/components/subscription-gate";
@@ -58,7 +58,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     return acc;
   }, {} as Record<string, { campaignName: string, items: typeof dueFollowUps }>);
 
-  const notifications: any[] = [];
+  const notifications: Array<{
+    id: string;
+    title: string;
+    target: string;
+    campaign: string;
+    time: string;
+    url?: string;
+  }> = [];
 
   for (const campaignId in groupedByCampaign) {
     const group = groupedByCampaign[campaignId];

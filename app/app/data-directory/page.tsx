@@ -1,4 +1,5 @@
-import { DataDirectoryWorkspace, PageHeader } from "@/components/product-components";
+import { PageHeader } from "@/components/page-header";
+import { DataDirectoryWorkspace } from "@/components/product-components";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import type { CampaignStatus, Priority, TargetStatus } from "@/lib/mock-data";

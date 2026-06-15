@@ -1,4 +1,5 @@
-import { FollowUpCampaignQueue, PageHeader } from "@/components/product-components";
+import { PageHeader } from "@/components/page-header";
+import { FollowUpCampaignQueue } from "@/components/product-components";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { redirect } from "next/navigation";

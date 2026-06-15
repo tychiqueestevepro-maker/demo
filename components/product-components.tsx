@@ -799,25 +799,16 @@ export function AppSidebar({
 }
 
 function SubscriptionExpiredNotification() {
-  const [isExpired, setIsExpired] = React.useState(false);
+  const [isExpired, setIsExpired] = React.useState(() => {
+    if (typeof document === "undefined") return false;
+    return document.querySelector("[data-auth-expired]")?.getAttribute("data-auth-expired") === "true";
+  });
   const [loading, setLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    // Try to get subscription status from auth context
-    try {
-      const authProvider = document.querySelector("[data-auth-expired]");
-      if (authProvider?.getAttribute("data-auth-expired") === "true") {
-        setIsExpired(true);
-      }
-    } catch {
-      // Fallback: check via API if session is available
-    }
-  }, []);
 
   // Listen for custom event from auth provider
   React.useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
+      const detail = (event as CustomEvent<{ isExpired?: boolean }>).detail;
       setIsExpired(detail?.isExpired === true);
     };
     window.addEventListener("subscription-status", handler);
@@ -894,20 +885,24 @@ function VerytisLogo({ className }: { className?: string }) {
 
 function SidebarSearchItem({ collapsed }: { collapsed: boolean }) {
   const [query, setQuery] = React.useState("");
-  const [results, setResults] = React.useState<any[]>([]);
+  const [results, setResults] = React.useState<Awaited<ReturnType<typeof searchWorkspace>>>([]);
   const [isPending, startTransition] = React.useTransition();
   const normalizedQuery = query.trim().toLowerCase();
 
   React.useEffect(() => {
-    if (!normalizedQuery) {
-      setResults([]);
-      return;
-    }
+    if (!normalizedQuery) return;
 
+    let cancelled = false;
     startTransition(async () => {
       const data = await searchWorkspace(normalizedQuery);
-      setResults(data);
+      if (!cancelled) {
+        setResults(data);
+      }
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [normalizedQuery]);
 
   const filteredRows = normalizedQuery ? results : [];
@@ -970,7 +965,7 @@ function SidebarSearchItem({ collapsed }: { collapsed: boolean }) {
               ))}
               {filteredRows.length === 0 ? (
                 <div className="rounded-2xl bg-violet-50 px-4 py-8 text-center text-sm font-medium text-violet-900/60">
-                  No result found.
+                  {isPending ? "Searching..." : "No result found."}
                 </div>
               ) : null}
             </div>
@@ -1208,7 +1203,6 @@ export function CampaignCard({ campaign }: { campaign: Campaign }) {
   const channelValues = campaignChannelValues(campaign.channel);
   const metrics = [
     ["Due", campaign.followUpsDue, "manual actions"],
-    ["Replies", campaign.replies, "to review"],
     ["Refused", campaign.blocked, "rejected"],
     ["Done", campaign.completed, "completed"],
   ] as const;
@@ -1820,7 +1814,7 @@ type FollowUpType = {
   campaign: string;
   type: string;
   reason: string;
-  priority: any;
+  priority: Priority;
   status: string;
   due: string;
   dueDate: string;
@@ -1878,7 +1872,7 @@ export function FollowUpCampaignQueue({
               ))}
             </select>
             <div className="mt-4 flex flex-wrap gap-2">
-              <CampaignStatusBadge status={selectedCampaign.status as any} />
+              <CampaignStatusBadge status={toCampaignStatus(selectedCampaign.status)} />
               <Badge tone="violet">{selectedCampaign.type}</Badge>
               <Badge>{selectedCampaign.followUpsDue} due</Badge>
               <ChannelLogoPill channels={campaignChannelValues(selectedCampaign.channel)} />
@@ -1938,6 +1932,18 @@ export function FollowUpCampaignQueue({
       </Card>
     </div>
   );
+}
+
+function toCampaignStatus(status: string): CampaignStatus {
+  if (status === "DRAFT") return "Review";
+  if (status === "ACTIVE") return "Active";
+  if (status === "PAUSED") return "Paused";
+  if (status === "COMPLETED") return "Completed";
+  if (status === "WAITING") return "Waiting";
+  if (status === "Active" || status === "Paused" || status === "Completed" || status === "Review" || status === "Waiting") {
+    return status;
+  }
+  return "Waiting";
 }
 
 export function CopyMessageButton({ message, label = "Copy" }: { message: string; label?: string }) {

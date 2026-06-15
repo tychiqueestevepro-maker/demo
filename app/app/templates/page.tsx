@@ -2,7 +2,7 @@ import { FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { PageHeader } from "@/components/product-components";
+import { PageHeader } from "@/components/page-header";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 

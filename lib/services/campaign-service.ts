@@ -16,7 +16,20 @@ export async function listCampaigns(userId: string) {
   });
 }
 
+async function assertCampaignLimit(userId: string) {
+  const activeCount = await prisma.campaign.count({
+    where: { userId, status: CampaignStatus.ACTIVE },
+  });
+  if (activeCount >= 5) {
+    throw new ApiError(400, "You cannot have more than 5 active campaigns at the same time.");
+  }
+}
+
 export async function createCampaign(userId: string, input: CampaignCreateInput) {
+  if (input.status === CampaignStatus.ACTIVE) {
+    await assertCampaignLimit(userId);
+  }
+
   const campaign = await prisma.campaign.create({
     data: {
       ...input,
@@ -55,6 +68,10 @@ export async function getCampaign(userId: string, id: string) {
 export async function updateCampaign(userId: string, id: string, input: CampaignPatchInput) {
   assertOwned(await prisma.campaign.findUnique({ where: { id } }), userId);
 
+  if (input.status === CampaignStatus.ACTIVE) {
+    await assertCampaignLimit(userId);
+  }
+
   const campaign = await prisma.campaign.update({
     where: { id },
     data: input,
@@ -81,6 +98,8 @@ export async function launchCampaign(userId: string, id: string) {
   if (campaign.status === CampaignStatus.ARCHIVED) {
     throw new ApiError(400, "Archived campaigns cannot be launched.");
   }
+
+  await assertCampaignLimit(userId);
 
   await createFollowUpsFromPlaybook(userId, id);
 

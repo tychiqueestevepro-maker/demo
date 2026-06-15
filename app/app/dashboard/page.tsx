@@ -80,7 +80,7 @@ export default async function DashboardPage() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Badge tone="violet">Today</Badge>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#120b2f]">Manual follow-up desk</h1>
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#120b2f]">Follow-up desk</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-[#120b2f]/58">
               Review replies, prepare the next messages, then open each campaign only when context needs attention.
             </p>
@@ -95,8 +95,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 md:grid-cols-4">
-          <SnapshotCard icon={<MessageCircle className="h-5 w-5" />} label="Replies waiting" value={String(repliesCount)} tone="emerald" />
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
           <SnapshotCard icon={<Clock3 className="h-5 w-5" />} label="Due today" value={String(dueFollowUps.length)} tone="violet" />
           <SnapshotCard icon={<Users className="h-5 w-5" />} label="Targets tracked" value={String(targetsCount)} tone="blue" />
           <SnapshotCard icon={<CheckCircle2 className="h-5 w-5" />} label="Campaigns running" value={String(activeCampaigns.length)} tone="amber" />

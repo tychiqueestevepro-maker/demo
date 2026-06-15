@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { LeafLogo } from "@/components/product-components";
+import { LeafLogo } from "@/components/brand";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = React.useState("");
@@ -57,7 +57,7 @@ export default function ForgotPasswordPage() {
             Reset your password.
           </h1>
           <p className="mt-5 text-lg leading-8 text-neutral-600">
-            Enter your email address and we'll send you a link to get back into your account.
+            Enter your email address and we&apos;ll send you a link to get back into your account.
           </p>
         </div>
         <p className="text-sm text-neutral-500">verytis — Follow-up cockpit</p>

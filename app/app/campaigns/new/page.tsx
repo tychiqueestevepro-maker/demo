@@ -1,4 +1,5 @@
-import { CampaignWizard, PageHeader } from "@/components/product-components";
+import { PageHeader } from "@/components/page-header";
+import { CampaignWizard } from "@/components/product-components";
 
 export default function NewCampaignPage() {
   return (
@@ -12,4 +13,3 @@ export default function NewCampaignPage() {
     </>
   );
 }
-

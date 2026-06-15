@@ -3,7 +3,8 @@ import { Plus } from "lucide-react";
 import { format } from "date-fns";
 
 import { Button } from "@/components/ui/button";
-import { CampaignDirectory, PageHeader } from "@/components/product-components";
+import { PageHeader } from "@/components/page-header";
+import { CampaignDirectory } from "@/components/product-components";
 import { getServerUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 

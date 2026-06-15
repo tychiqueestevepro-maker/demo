@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextRequest } from "next/server";
+import { cache } from "react";
 
 import { prisma } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -171,7 +172,7 @@ export function assertOwned<T>(record: (T & { userId: string }) | null, userId: 
   return record;
 }
 
-export async function getServerUser(): Promise<AuthContext & { email?: string; name?: string; avatarUrl?: string }> {
+async function getServerUserUncached(): Promise<AuthContext & { email?: string; name?: string; avatarUrl?: string }> {
   const cookieStore = await cookies();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -231,3 +232,5 @@ export async function getServerUser(): Promise<AuthContext & { email?: string; n
 
   throw new ApiError(401, "Authentication required.");
 }
+
+export const getServerUser = cache(getServerUserUncached);

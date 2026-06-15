@@ -5,10 +5,10 @@ import {
   AISummaryCard,
   CampaignStatusBadge,
   CampaignTabs,
-  PageHeader,
   ProgressBar,
   StatCard,
 } from "@/components/product-components";
+import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { CampaignControls } from "@/components/campaign-controls";
 import { getServerUser } from "@/lib/auth";
@@ -211,9 +211,8 @@ export default async function CampaignDetailPage({ params }: CampaignDetailProps
           </div>
         </div>
       </div>
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Prospects" value={String(totalTargets)} detail="Total added" />
-        <StatCard label="Replied" value={String(replies)} detail="Replies to handle" tone="text-emerald-700" />
         <StatCard label="Follow-ups due" value={String(followUpsDue)} detail="Manual actions" tone="text-violet-700" />
         <StatCard label="Completed" value={String(completed)} detail="Closed targets" tone="text-blue-700" />
         <StatCard label="Refused" value={String(blocked)} detail="Target rejected" tone="text-rose-700" />

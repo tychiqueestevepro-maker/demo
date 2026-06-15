@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { LeafLogo } from "@/components/product-components";
+import { LeafLogo } from "@/components/brand";
 
 export default function UpdatePasswordPage() {
   const [newPassword, setNewPassword] = React.useState("");
@@ -68,7 +68,7 @@ export default function UpdatePasswordPage() {
             Choose a new password.
           </h1>
           <p className="mt-5 text-lg leading-8 text-neutral-600">
-            Make sure it's at least 8 characters long.
+            Make sure it&apos;s at least 8 characters long.
           </p>
         </div>
         <p className="text-sm text-neutral-500">verytis — Follow-up cockpit</p>
